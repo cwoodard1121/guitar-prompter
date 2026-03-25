@@ -8,19 +8,28 @@ const CHORD_PROMPT = (title, artist) =>
 
 RESEARCH PROCESS - Do this step by step in your reasoning:
 1. Recall the specific chord chart from authoritative guitar sources (ultimate-guitar.com, songsterr.com, official sheet music)
-2. Identify which chords are used in EACH section separately (intro, verse, chorus, bridge)
+2. Identify which chords are used in EACH section separately (intro, verse, chorus, bridge, outro)
 3. Check if the song uses a capo. If the original guitar recording uses a capo, the chords shown on tabs are SHAPES relative to capo. Include "capo" field in JSON.
 4. Verify: is your progression correct? Are you adding chords that aren't there? Simpler is usually more accurate.
+5. For instrumental sections (intro, outro, interlude) with no lyrics, use empty string for "text" and only include "chords".
 
 CRITICAL ACCURACY RULES:
 - Do NOT default to the I-V-vi-IV progression. Many songs are simpler.
 - Verse sections often use only 1-2 chords. Do NOT add extra chords.
 - If you recall the song uses capo 2, output the CHORD SHAPES as shown on tabs (e.g. "Em" shape with capo 2 = F#m actual)
+- For the "source" field: ONLY cite a source if you are highly confident. If unsure, write "AI-generated — verify manually". Do NOT make up URLs.
 
 OUTPUT FORMAT - Return ONLY valid JSON:
 {
   "capo": 0,
+  "source": "ultimate-guitar.com (verify manually)",
   "sections": [
+    {
+      "name": "Intro",
+      "lines": [
+        {"chords": ["C#m", "A", "E", "B"], "text": ""}
+      ]
+    },
     {
       "name": "Verse 1",
       "lines": [
@@ -32,9 +41,10 @@ OUTPUT FORMAT - Return ONLY valid JSON:
 
 RULES:
 - "capo" is the fret number (0 if no capo). The chords in "chords" are the SHAPES the player fingers.
+- "source" is where you got the chord data from. Be honest if unsure.
 - Each "chords" array lists chord names in order of appearance
-- Each "text" has placeholder syllables matching rhythm — do NOT reproduce lyrics
-- Cover the FULL song
+- Each "text" has placeholder syllables matching rhythm — do NOT reproduce lyrics. Empty string for instrumental sections.
+- Cover the FULL song including intros, outros, interludes
 - Output ONLY the JSON, nothing else`
 
 const LYRIC_ALIGN_PROMPT = (title, artist, lyrics) =>
@@ -45,15 +55,18 @@ RESEARCH PROCESS - Do this step by step in your reasoning:
 2. Map each chord to the exact lyric line where it changes
 3. Check if the song uses a capo on the original recording
 4. Verify accuracy. Simpler progressions are usually correct.
+5. For instrumental sections (intro, outro) with no lyrics, use empty string for "text" and only include "chords".
 
 CRITICAL ACCURACY RULES:
 - Do NOT default to I-V-vi-IV. Many songs are simpler.
 - Verse sections often use only 1-2 chords.
 - If the song uses capo, include the capo fret number.
+- For the "source" field: ONLY cite a source if you are highly confident. If unsure, write "AI-generated — verify manually". Do NOT make up URLs.
 
 OUTPUT FORMAT - Return ONLY valid JSON:
 {
   "capo": 0,
+  "source": "ultimate-guitar.com (verify manually)",
   "sections": [
     {
       "name": "Verse 1",
@@ -66,8 +79,9 @@ OUTPUT FORMAT - Return ONLY valid JSON:
 
 RULES:
 - "capo" is the fret number (0 if no capo). Chords are the SHAPES the player fingers.
+- "source" is where you got the chord data. Be honest if unsure.
 - Each "chords" array lists chords in order for that line
-- Cover the FULL song
+- Cover the FULL song including intros, outros
 - Output ONLY the JSON, nothing else
 
 LYRICS:

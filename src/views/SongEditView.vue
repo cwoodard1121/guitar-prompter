@@ -122,6 +122,12 @@ function parseChordResponse(data) {
     lines.push('')
   }
 
+  // Add source attribution if present
+  if (json.source) {
+    lines.push(`// Source: ${json.source}`)
+    lines.push('')
+  }
+
   for (const section of json.sections) {
     if (section.name) lines.push('')  // blank line before section
     for (const line of section.lines || []) {
