@@ -2,122 +2,102 @@ import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import OpenAI from 'openai'
+import fs from 'fs'
+import path from 'path'
 
 const CHORD_PROMPT = (title, artist) =>
-  `Generate the MOST ACCURATE guitar chord chart possible for "${title}"${artist ? ` by ${artist}` : ''}.
+  `You are a guitar chord assistant for simple strumming songs (country, folk, pop). Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
 
-YOU MUST RESEARCH THIS. Do not guess. In your reasoning, work through each section one at a time.
+Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. Do NOT use power chord notation (no A5, E5, etc.) and do NOT use tab notation. Keep it playable by a casual guitarist who reads chord names.
 
-STEP BY STEP RESEARCH:
-1. Think: what genre? What era? What tuning?
-2. For EACH section, determine the EXACT chord for EACH LINE. Chords change throughout a section — they are NOT the same for every line.
-3. The verse chords are different from chorus chords. Within a verse, each line often has a DIFFERENT chord.
-4. Check if the song uses a capo.
-5. Cite your source URL.
+Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
 
-CRITICAL — EACH LINE GETS ITS OWN CHORDS:
-- Do NOT repeat the same chords for every line in a section
-- Each line has its own chord or chords where the change happens
-- Example of WRONG (repeating): {"chords":["E","A"], "text":"line 1"}, {"chords":["E","A"], "text":"line 2"}
-- Example of RIGHT (per-line): {"chords":["E"], "text":"line 1"}, {"chords":["D"], "text":"line 2"}, {"chords":["A"], "text":"line 3"}, {"chords":["E"], "text":"line 4"}
-- A chord array with multiple chords means they change WITHIN that line: {"chords":["D","A"], "text":"line with two chords"}
-- Transition chords at end of line: {"chords":["E","B"], "text":"end of phrase"}
+Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
 
-OUTPUT — ONLY valid JSON:
-{
-  "capo": 0,
-  "source": "URL or source name",
-  "sections": [
-    {"name": "Intro", "lines": [{"chords": ["C#m","A","E","B"], "text": ""}]},
-    {"name": "Verse 1", "lines": [
-      {"chords": ["E"], "text": "da da da da da da"},
-      {"chords": ["D"], "text": "da da da da da da"},
-      {"chords": ["A"], "text": "da da da da da da"},
-      {"chords": ["E"], "text": "da da da da da da da da da"}
-    ]},
-    {"name": "Chorus", "lines": [
-      {"chords": ["C#m","A","E","B"], "text": "da da da da da da"},
-      {"chords": ["C#m","A","E","B"], "text": "da da da da da da"}
-    ]}
-  ]
+[G]           [Cadd9]      [D]
+da da-da da   da da-da da  da da
+[G]           [D]          [Em]
+da da-da da   da da-da da  da-da-da
+
+Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
+
+const SONGS_FILE = path.resolve(process.cwd(), 'songs.json')
+
+function readSongs() {
+  try {
+    return JSON.parse(fs.readFileSync(SONGS_FILE, 'utf-8'))
+  } catch {
+    return []
+  }
 }
 
-RULES:
-- Cover the FULL song with every section and every line
-- "text": placeholder syllables matching rhythm. Empty "" for instrumental.
-- Output ONLY the JSON, nothing else`
-
-const LYRIC_ALIGN_PROMPT = (title, artist, lyrics) =>
-  `Generate the MOST ACCURATE guitar chord chart for "${title}"${artist ? ` by ${artist}` : ''} aligned to the real lyrics below.
-
-YOU MUST RESEARCH THIS. In your reasoning, work through each section one at a time.
-
-STEP BY STEP:
-1. Read the lyrics and identify each section
-2. For EACH LYRIC LINE, determine the EXACT chord. Each line often has a DIFFERENT chord.
-3. Chords change WITHIN lines too — a line might go from D to A mid-sentence.
-4. Add intro/interlude sections (no lyrics) before verse sections.
-5. Cite your source URL.
-
-CRITICAL — EACH LINE GETS ITS OWN CHORDS:
-- Do NOT repeat the same chords for every line
-- Each line has its own chord(s) where the change happens
-- Example of WRONG: {"chords":["E","A"], "text":"line 1"}, {"chords":["E","A"], "text":"line 2"}
-- Example of RIGHT: {"chords":["E"], "text":"Now if you're feeling kinda low"}, {"chords":["D"], "text":"'bout the dues you've been paying"}, {"chords":["A"], "text":"Future's coming much too slow"}, {"chords":["E"], "text":"And you wanna run..."}
-- Multiple chords in one array means they change within that line
-- Transition chords at end: {"chords":["E","B"], "text":"end of phrase"}
-
-OUTPUT — ONLY valid JSON:
-{
-  "capo": 0,
-  "source": "URL or source name",
-  "sections": [
-    {"name": "Intro", "lines": [{"chords": ["C#m","A","E","B"], "text": ""}]},
-    {"name": "Verse 1", "lines": [
-      {"chords": ["E"], "text": "Now if you're feeling kinda low"},
-      {"chords": ["D"], "text": "'bout the dues you've been paying"},
-      {"chords": ["A","E"], "text": "Future's coming much too slow"},
-      {"chords": ["E"], "text": "And you wanna run but somehow you just keep on staying"},
-      {"chords": ["D"], "text": "Can't decide on which way to go"},
-      {"chords": ["A","B"], "text": "Yeah yeah yeah"}
-    ]}
-  ]
+function writeSongs(songs) {
+  fs.writeFileSync(SONGS_FILE, JSON.stringify(songs, null, 2))
 }
 
-RULES:
-- Cover the FULL song including intros, outros
-- Output ONLY the JSON, nothing else
+function songsMiddlewarePlugin() {
+  return {
+    name: 'songs-middleware',
+    configureServer(server) {
+      server.middlewares.use('/api/songs', async (req, res) => {
+        const url = new URL(req.url, 'http://localhost')
+        const id = url.searchParams.get('id')
 
-LYRICS:
-${lyrics}`
+        const send = (code, data) => {
+          res.statusCode = code
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(data))
+        }
 
-const FORMAT_PROMPT = (tabText) =>
-  `Clean up and format this guitar tab text. DO NOT change any chords — only fix formatting and alignment.
+        const readBody = () => new Promise((resolve, reject) => {
+          let body = ''
+          req.on('data', chunk => { body += chunk })
+          req.on('end', () => { try { resolve(JSON.parse(body)) } catch { reject(new Error('Invalid JSON')) } })
+          req.on('error', reject)
+        })
 
-RULES:
-- Keep EVERY chord exactly as it is. Do not add, remove, or change any chord names.
-- Keep EVERY lyric line exactly as it is (word for word).
-- Align chords to the correct words above them.
-- Remove section labels like [Verse 1], [Chorus] — they're not needed.
-- Remove repeat markers like x2, x4 — just repeat the chords/lines.
-- Remove guitar tab notation (e|---| lines, fret numbers).
-- Remove metadata (Capo:, Tuning:, etc.) unless it's a capo indicator.
-- Output clean text with chords on their own lines above the lyrics they align with.
+        if (req.method === 'GET') {
+          return send(200, readSongs())
+        }
 
-OUTPUT FORMAT — plain text, chords above lyrics:
-C#m  A   E  B
-Now, if you're feeling kinda low
-D               A        E
-Future's coming much too slow
+        if (req.method === 'POST') {
+          const data = await readBody()
+          const songs = readSongs()
+          const song = { ...data, id: Date.now().toString() }
+          songs.push(song)
+          writeSongs(songs)
+          return send(201, song)
+        }
 
-TAB TEXT:
-${tabText}`
+        if (req.method === 'PUT') {
+          if (!id) return send(400, { error: 'id is required' })
+          const data = await readBody()
+          const songs = readSongs()
+          const idx = songs.findIndex(s => s.id === id)
+          if (idx === -1) return send(404, { error: 'song not found' })
+          songs[idx] = { ...songs[idx], ...data, id }
+          writeSongs(songs)
+          return send(200, songs[idx])
+        }
+
+        if (req.method === 'DELETE') {
+          if (!id) return send(400, { error: 'id is required' })
+          const songs = readSongs()
+          const filtered = songs.filter(s => s.id !== id)
+          writeSongs(filtered)
+          return send(200, { ok: true })
+        }
+
+        return send(405, { error: 'method not allowed' })
+      })
+    }
+  }
+}
 
 function apiMiddlewarePlugin(env) {
   return {
     name: 'api-middleware',
     configureServer(server) {
-      // Suggest chords with placeholder syllables (no real lyrics)
       server.middlewares.use('/api/chords', async (req, res) => {
         const url = new URL(req.url, 'http://localhost')
         const title = url.searchParams.get('title') || ''
@@ -138,92 +118,11 @@ function apiMiddlewarePlugin(env) {
           const client = new OpenAI({ apiKey })
           const completion = await client.chat.completions.create({
             model: 'o4-mini',
-            max_completion_tokens: 32768,
-            reasoning_effort: 'high',
+            max_completion_tokens: 4096,
+            reasoning_effort: 'low',
             messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
           })
           return send(200, { content: completion.choices[0]?.message?.content || '' })
-        } catch (err) {
-          return send(500, { error: err.message })
-        }
-      })
-
-      // Fetch real lyrics and align with chords
-      server.middlewares.use('/api/lyrics', async (req, res) => {
-        const url = new URL(req.url, 'http://localhost')
-        const title = url.searchParams.get('title') || ''
-        const artist = url.searchParams.get('artist') || ''
-
-        const send = (code, data) => {
-          res.statusCode = code
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(data))
-        }
-
-        if (!title) return send(400, { error: 'title is required' })
-
-        const apiKey = env.OPENAI_API_KEY
-        if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
-
-        try {
-          // Step 1: Fetch lyrics from lyrics.ovh
-          const lyricsUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist || 'unknown')}/${encodeURIComponent(title)}`
-          const lyricsRes = await fetch(lyricsUrl)
-          if (!lyricsRes.ok) {
-            const errData = await lyricsRes.json().catch(() => ({}))
-            return send(lyricsRes.status, { error: errData.error || 'Could not find lyrics' })
-          }
-          const lyricsData = await lyricsRes.json()
-          const rawLyrics = lyricsData.lyrics
-          if (!rawLyrics) return send(404, { error: 'No lyrics found' })
-
-          // Step 2: Use OpenAI to align chords with the lyrics
-          const client = new OpenAI({ apiKey })
-          const completion = await client.chat.completions.create({
-            model: 'o4-mini',
-            max_completion_tokens: 32768,
-            reasoning_effort: 'high',
-            messages: [{ role: 'user', content: LYRIC_ALIGN_PROMPT(title, artist, rawLyrics) }]
-          })
-          const content = completion.choices[0]?.message?.content || ''
-          return send(200, { content, rawLyrics })
-        } catch (err) {
-          return send(500, { error: err.message })
-        }
-      })
-
-      // Format endpoint: AI cleans up pasted tab text without changing chords
-      server.middlewares.use('/api/format', async (req, res) => {
-        const send = (code, data) => {
-          res.statusCode = code
-          res.setHeader('Content-Type', 'application/json')
-          res.end(JSON.stringify(data))
-        }
-
-        // Read body
-        let body = ''
-        await new Promise((resolve) => {
-          req.on('data', chunk => body += chunk)
-          req.on('end', resolve)
-        })
-        let tabText = ''
-        try { tabText = JSON.parse(body).tabText || '' } catch {}
-
-        if (!tabText.trim()) return send(400, { error: 'tabText is required' })
-
-        const apiKey = env.OPENAI_API_KEY
-        if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
-
-        try {
-          const client = new OpenAI({ apiKey })
-          const completion = await client.chat.completions.create({
-            model: 'o4-mini',
-            max_completion_tokens: 16384,
-            reasoning_effort: 'low',
-            messages: [{ role: 'user', content: FORMAT_PROMPT(tabText) }]
-          })
-          const content = completion.choices[0]?.message?.content || ''
-          return send(200, { content })
         } catch (err) {
           return send(500, { error: err.message })
         }
@@ -235,6 +134,7 @@ function apiMiddlewarePlugin(env) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
   return { plugins: [
+    songsMiddlewarePlugin(),
     apiMiddlewarePlugin(env),
     vue(),
     VitePWA({
