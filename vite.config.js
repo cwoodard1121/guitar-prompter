@@ -1,21 +1,23 @@
-import { defineConfig } from 'vite'
+import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
 import OpenAI from 'openai'
 
 const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant. Generate a simple chord chart with lyrics for the song "${title}"${artist ? ` by ${artist}` : ''}.
+  `You are a guitar chord assistant. Generate a chord chart for the song "${title}"${artist ? ` by ${artist}` : ''}.
 
-Format it like this example — put chord names in [brackets] on lines ABOVE the lyric they apply to, matching the syllable position:
+Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
 
-[G]         [C]         [G]
-Here comes the sun, doo doo doo
-[G]         [C]           [D]
-Here comes the sun, and I say
+Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
 
-Only output the chord/lyric text, no explanations. Keep it to one verse and one chorus. Use common open chords when possible.`
+[Eb]          [Bb]         [Eb]
+da da-da da   da da-da da  da da
+[Eb]          [Bb]         [Cm]
+da da-da da   da da-da da  da-da-da
 
-function apiMiddlewarePlugin() {
+Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
+
+function apiMiddlewarePlugin(env) {
   return {
     name: 'api-middleware',
     configureServer(server) {
@@ -32,14 +34,15 @@ function apiMiddlewarePlugin() {
 
         if (!title) return send(400, { error: 'title is required' })
 
-        const apiKey = process.env.OPENAI_API_KEY
+        const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
 
         try {
           const client = new OpenAI({ apiKey })
           const completion = await client.chat.completions.create({
             model: 'o4-mini',
-            max_completion_tokens: 1024,
+            max_completion_tokens: 4096,
+            reasoning_effort: 'low',
             messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
           })
           return send(200, { content: completion.choices[0]?.message?.content || '' })
@@ -51,9 +54,10 @@ function apiMiddlewarePlugin() {
   }
 }
 
-export default defineConfig({
-  plugins: [
-    apiMiddlewarePlugin(),
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '')
+  return { plugins: [
+    apiMiddlewarePlugin(env),
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -91,5 +95,5 @@ export default defineConfig({
         ]
       }
     })
-  ]
+  ]}
 })

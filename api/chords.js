@@ -12,22 +12,25 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
   }
 
-  const prompt = `You are a guitar chord assistant. Generate a simple chord chart with lyrics for the song "${title}"${artist ? ` by ${artist}` : ''}.
+  const prompt = `You are a guitar chord assistant. Generate a chord chart for the song "${title}"${artist ? ` by ${artist}` : ''}.
 
-Format it like this example — put chord names in [brackets] on lines ABOVE the lyric they apply to, matching the syllable position:
+Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
 
-[G]         [C]         [G]
-Here comes the sun, doo doo doo
-[G]         [C]           [D]
-Here comes the sun, and I say
+Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
 
-Only output the chord/lyric text, no explanations. Keep it to one verse and one chorus. Use common open chords when possible.`
+[Eb]          [Bb]         [Eb]
+da da-da da   da da-da da  da da
+[Eb]          [Bb]         [Cm]
+da da-da da   da da-da da  da-da-da
+
+Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
 
   try {
     const client = new OpenAI({ apiKey })
     const completion = await client.chat.completions.create({
       model: 'o4-mini',
-      max_completion_tokens: 1024,
+      max_completion_tokens: 4096,
+      reasoning_effort: 'low',
       messages: [{ role: 'user', content: prompt }]
     })
     const content = completion.choices[0]?.message?.content || ''
