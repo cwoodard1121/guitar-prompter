@@ -28,6 +28,20 @@
       </label>
 
       <div class="chord-suggest" v-if="isNew">
+        <div class="provider-toggle">
+          <button
+            type="button"
+            class="provider-btn"
+            :class="{ active: provider === 'anthropic' }"
+            @click="provider = 'anthropic'"
+          >Claude</button>
+          <button
+            type="button"
+            class="provider-btn"
+            :class="{ active: provider === 'openai' }"
+            @click="provider = 'openai'"
+          >ChatGPT</button>
+        </div>
         <button type="button" class="btn-suggest" :disabled="loadingChords || !form.title" @click="suggestChords">
           {{ loadingChords ? 'Loading…' : '✨ Suggest chords with AI' }}
         </button>
@@ -56,6 +70,7 @@ const isNew = computed(() => route.params.id === undefined)
 const form = ref({ title: '', artist: '', content: '' })
 const loadingChords = ref(false)
 const chordError = ref('')
+const provider = ref('anthropic')
 
 onMounted(() => {
   if (!isNew.value) {
@@ -78,7 +93,7 @@ async function suggestChords() {
   loadingChords.value = true
   chordError.value = ''
   try {
-    const res = await fetch(`/api/chords?title=${encodeURIComponent(form.value.title)}&artist=${encodeURIComponent(form.value.artist)}`)
+    const res = await fetch(`/api/chords?title=${encodeURIComponent(form.value.title)}&artist=${encodeURIComponent(form.value.artist)}&provider=${provider.value}`)
     if (!res.ok) throw new Error(await res.text())
     const data = await res.json()
     if (data.content) form.value.content = data.content
@@ -172,6 +187,30 @@ textarea {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.provider-toggle {
+  display: flex;
+  background: var(--bg-card);
+  border: 1px solid #333;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.provider-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.provider-btn.active {
+  background: var(--accent2);
+  color: var(--text);
 }
 
 .btn-suggest {
