@@ -94,72 +94,70 @@ export const CHORDS = {
   'G5':  { fingers: [3, 5, 5, -1, -1, -1], barres: [] },
 }
 
-// Barre chord alternatives for common open chords
-// These are moveable shapes that don't require a capo
-export const BARRE_CHORDS = {
-  // E-shape barre chords (root on 6th string)
-  'F':  { fingers: [1, 3, 3, 2, 1, 1], barres: [{ fromString: 6, toString: 1, fret: 1 }], label: 'E shape, 1st fret' },
-  'Fm': { fingers: [1, 3, 3, 1, 1, 1], barres: [{ fromString: 6, toString: 1, fret: 1 }], label: 'Em shape, 1st fret' },
-  'F7': { fingers: [1, 3, 1, 2, 1, 1], barres: [{ fromString: 6, toString: 1, fret: 1 }], label: 'E7 shape, 1st fret' },
+// Chromatic scale for transposition (enharmonic pairs handled by preference)
+const CHROMATIC = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+const FLAT_NAMES = { 'C#': 'Db', 'D#': 'Eb', 'F#': 'Gb', 'G#': 'Ab', 'A#': 'Bb' }
 
-  'G':  { fingers: [3, 5, 5, 5, 4, 3], barres: [{ fromString: 6, toString: 1, fret: 3 }], label: 'E shape, 3rd fret' },
-  'Gm': { fingers: [3, 5, 5, 3, 3, 3], barres: [{ fromString: 6, toString: 1, fret: 3 }], label: 'Em shape, 3rd fret' },
+// Regex to validate a chord name (must match what's inside the brackets)
+const CHORD_PATTERN = /^[A-G][#b]?(?:m(?:aj7|7)?|7|sus2|sus4|add9|5)?$/
 
-  'Ab': { fingers: [4, 6, 6, 5, 4, 4], barres: [{ fromString: 6, toString: 1, fret: 4 }], label: 'E shape, 4th fret' },
-
-  // A-shape barre chords (root on 5th string)
-  'Bb': { fingers: [-1, 1, 3, 3, 3, 1], barres: [{ fromString: 5, toString: 1, fret: 1 }], label: 'A shape, 1st fret' },
-  'Bbm':{ fingers: [-1, 1, 3, 3, 2, 1], barres: [{ fromString: 5, toString: 1, fret: 1 }], label: 'Am shape, 1st fret' },
-
-  'B':  { fingers: [-1, 2, 4, 4, 4, 2], barres: [{ fromString: 5, toString: 1, fret: 2 }], label: 'A shape, 2nd fret' },
-  'Bm': { fingers: [-1, 2, 4, 4, 3, 2], barres: [{ fromString: 5, toString: 1, fret: 2 }], label: 'Am shape, 2nd fret' },
-
-  'C':  { fingers: [-1, 3, 5, 5, 5, 3], barres: [{ fromString: 5, toString: 1, fret: 3 }], label: 'A shape, 3rd fret' },
-  'Cm': { fingers: [-1, 3, 5, 5, 4, 3], barres: [{ fromString: 5, toString: 1, fret: 3 }], label: 'Am shape, 3rd fret' },
-
-  'C#': { fingers: [-1, 4, 6, 6, 6, 4], barres: [{ fromString: 5, toString: 1, fret: 4 }], label: 'A shape, 4th fret' },
-  'C#m':{ fingers: [-1, 4, 6, 6, 5, 4], barres: [{ fromString: 5, toString: 1, fret: 4 }], label: 'Am shape, 4th fret' },
-
-  'D':  { fingers: [-1, 5, 7, 7, 7, 5], barres: [{ fromString: 5, toString: 1, fret: 5 }], label: 'A shape, 5th fret' },
-  'Dm': { fingers: [-1, 5, 7, 7, 6, 5], barres: [{ fromString: 5, toString: 1, fret: 5 }], label: 'Am shape, 5th fret' },
-
-  // Other barre chords
-  'Eb': { fingers: [-1, -1, 1, 3, 4, 3], barres: [], label: 'D shape, 1st fret' },
-  'Abm':{ fingers: [4, 6, 6, 4, 4, 4], barres: [{ fromString: 6, toString: 1, fret: 4 }], label: 'Em shape, 4th fret' },
+// Check if a string is a valid chord name
+export function isValidChord(name) {
+  return CHORD_PATTERN.test(name) && (name in CHORDS)
 }
 
-// Alternate tunings: how each string differs from standard EADGBE
-// Positive = higher semitones, negative = lower
-export const TUNINGS = {
-  'Standard':      { name: 'Standard',  strings: ['E', 'A', 'D', 'G', 'B', 'E'], offsets: [0, 0, 0, 0, 0, 0] },
-  'Drop D':        { name: 'Drop D',    strings: ['D', 'A', 'D', 'G', 'B', 'E'], offsets: [-2, 0, 0, 0, 0, 0] },
-  'Drop C#':       { name: 'Drop C#',   strings: ['C#','A', 'D', 'G', 'B', 'E'], offsets: [-3, 0, 0, 0, 0, 0] },
-  'Drop C':        { name: 'Drop C',    strings: ['C', 'A', 'D', 'G', 'B', 'E'], offsets: [-4, 0, 0, 0, 0, 0] },
-  'Open G':        { name: 'Open G',    strings: ['D', 'G', 'D', 'G', 'B', 'D'], offsets: [-2, 0, 0, 0, 0, -2] },
-  'Open D':        { name: 'Open D',    strings: ['D', 'A', 'D', 'F#','A', 'D'], offsets: [-2, 0, 0, -1, 0, -2] },
-  'Open E':        { name: 'Open E',    strings: ['E', 'B', 'E', 'G#','B', 'E'], offsets: [0, -2, 0, 1, 0, 0] },
-  'Open C':        { name: 'Open C',    strings: ['C', 'G', 'C', 'G', 'C', 'E'], offsets: [-4, -2, 0, 0, 0, 0] },
-  'DADGAD':        { name: 'DADGAD',    strings: ['D', 'A', 'D', 'G', 'A', 'D'], offsets: [-2, 0, 0, 0, -2, -2] },
-  'Half Step Down':{ name: 'Half Step Down', strings: ['Eb','Ab','Db','Gb','Bb','Eb'], offsets: [-1, -1, -1, -1, -1, -1] },
-  'Whole Step Down':{ name: 'Whole Step Down', strings: ['D', 'G', 'C', 'F', 'A', 'D'], offsets: [-2, -2, -2, -2, -2, -2] },
-}
-
-// Extract unique chord names from chord chart text
+// Extract unique valid chord names from chord chart text
 export function extractChordNames(text) {
   const matches = text.match(/\[([^\]]+)\]/g) || []
-  const unique = new Set(matches.map(m => m.slice(1, -1)))
+  const names = matches.map(m => m.slice(1, -1))
+  // Only keep names that match the chord pattern AND exist in our database
+  const unique = new Set(names.filter(n => isValidChord(n)))
   return [...unique]
 }
 
-// Get chord data — returns open shape or barre shape based on preference
-export function getChord(name, useBarre = false) {
-  if (useBarre && BARRE_CHORDS[name]) {
-    return BARRE_CHORDS[name]
-  }
+// Get chord data
+export function getChord(name) {
   return CHORDS[name] || null
 }
 
-// Check if a chord has a barre alternative
-export function hasBarreShape(name) {
-  return !!BARRE_CHORDS[name]
+// Transpose a single chord name by N semitones
+// e.g. transposeChord('C', 1) => 'C#', transposeChord('Am', 1) => 'A#m'
+export function transposeChord(name, semitones) {
+  if (!semitones) return name
+  const match = name.match(/^([A-G][#b]?)(.*)$/)
+  if (!match) return name
+
+  let [, root, modifier] = match
+
+  // Normalize flats to sharps for indexing
+  let normalized = root
+  if (root.length === 2 && root[1] === 'b') {
+    // Convert flat to sharp of previous note
+    const flatToSharp = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' }
+    normalized = flatToSharp[root] || root
+  }
+
+  let idx = CHROMATIC.indexOf(normalized)
+  if (idx === -1) return name
+
+  idx = ((idx + semitones) % 12 + 12) % 12
+  let newRoot = CHROMATIC[idx]
+
+  // Use flat names for certain roots to keep it readable
+  if (FLAT_NAMES[newRoot] && (root.includes('b') || ['Bb', 'Eb', 'Ab', 'Db', 'Gb'].includes(root))) {
+    newRoot = FLAT_NAMES[newRoot]
+  }
+
+  return newRoot + modifier
+}
+
+// Transpose all chords in a chord chart text
+export function transposeContent(text, semitones) {
+  if (!semitones) return text
+  return text.replace(/\[([^\]]+)\]/g, (match, chord) => {
+    if (isValidChord(chord)) {
+      return `[${transposeChord(chord, semitones)}]`
+    }
+    return match
+  })
 }
