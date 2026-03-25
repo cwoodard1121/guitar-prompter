@@ -60,7 +60,7 @@ function apiMiddlewarePlugin(env) {
           const client = new OpenAI({ apiKey })
           const completion = await client.chat.completions.create({
             model: 'o4-mini',
-            max_completion_tokens: 16384,
+            max_completion_tokens: 32768,
             reasoning_effort: 'low',
             messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
           })
