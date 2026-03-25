@@ -16,9 +16,29 @@
         <input v-model="form.artist" type="text" placeholder="Artist name" />
       </label>
 
+      <label class="label-paste">
+        Paste from tab site
+        <span class="hint">Paste chords/lyrics from Ultimate Guitar or similar — we'll format it</span>
+        <textarea
+          v-model="pasteText"
+          placeholder="Paste tab text here...
+
+Example:
+               E
+Now, if you're feeling kinda low
+D               A        E
+Future's coming much too slow"
+          rows="10"
+          spellcheck="false"
+        ></textarea>
+        <button type="button" class="btn-format" :disabled="!pasteText.trim()" @click="formatPaste">
+          Format &amp; import
+        </button>
+      </label>
+
       <label class="label-content">
         Chords &amp; Lyrics
-        <span class="hint">Put chord names in [brackets] above the words they fall on</span>
+        <span class="hint">Edit your formatted chord chart — use [brackets] for chords</span>
         <textarea
           v-model="form.content"
           placeholder="[G]Here comes the [C]sun..."
@@ -29,7 +49,7 @@
 
       <div class="chord-suggest">
         <button type="button" class="btn-suggest btn-lyrics" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
-          {{ loadingLyrics ? 'Researching…' : '🎵 Fetch lyrics &amp; chords' }}
+          {{ loadingLyrics ? 'Researching…' : '🤖 AI fetch (beta)' }}
         </button>
         <span v-if="chordError" class="chord-error">{{ chordError }}</span>
       </div>
@@ -54,6 +74,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import ChordChart from '../components/ChordChart.vue'
+import { parseTabText } from '../utils/parseTab.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -62,9 +83,16 @@ const store = useSongsStore()
 const isNew = computed(() => route.params.id === undefined)
 
 const form = ref({ title: '', artist: '', content: '' })
+const pasteText = ref('')
 const loadingLyrics = ref(false)
 const chordError = ref('')
 const loadingPhase = ref('')
+
+function formatPaste() {
+  if (!pasteText.value.trim()) return
+  form.value.content = parseTabText(pasteText.value)
+  pasteText.value = ''
+}
 
 const LOADING_PHASES = [
   'Fetching lyrics...',
@@ -352,5 +380,32 @@ textarea {
   0%, 100% { opacity: 0.7; }
   33%      { opacity: 1; }
   66%      { opacity: 0.7; }
+}
+
+.label-paste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.btn-format {
+  background: var(--accent2);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.6rem 1.1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  align-self: flex-start;
+  margin-top: 0.25rem;
+}
+
+.btn-format:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 </style>
