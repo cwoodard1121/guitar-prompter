@@ -4,33 +4,61 @@ import { VitePWA } from 'vite-plugin-pwa'
 import OpenAI from 'openai'
 
 const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant. Generate a chord chart for the song "${title}"${artist ? ` by ${artist}` : ''}.
+  `You are a guitar chord expert. Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
 
-Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
+STEP 1 - RESEARCH: Before generating chords, think carefully about what the ACTUAL chord progression is for this specific song. Recall the real chords from guitar tabs, sheet music, and live performances. Do NOT default to generic progressions.
 
-Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
+STEP 2 - VERIFY: Double-check your chord choices. Many classic rock/country songs have VERY SIMPLE progressions (2-4 chords). The verse of a song is often simpler than the chorus. Common patterns:
+- I-V (D-A, G-D, C-G) — very common in rock verses
+- I-IV-V (G-C-D, A-D-E) — classic rock/country
+- I-V-vi-IV (G-D-Em-C, C-G-Am-F) — modern pop
+- vi-IV-I-V (Am-F-C-G) — another pop pattern
 
-[Eb]          [Bb]         [Eb]
-da da-da da   da da-da da  da da
-[Eb]          [Bb]         [Cm]
-da da-da da   da da-da da  da-da-da
+STEP 3 - OUTPUT: Return ONLY valid JSON, no other text:
+{
+  "sections": [
+    {
+      "name": "Verse 1",
+      "lines": [
+        {"chords": ["D", "A"], "text": "da da da da    da da da da"},
+        {"chords": ["D", "A"], "text": "da da da da    da da da da"}
+      ]
+    }
+  ]
+}
 
-Only output the chord/lyric text, no explanations. Cover the FULL song including all verses, choruses, and bridge if present. Use the accurate chords for this song.`
+RULES:
+- Each "chords" array lists the chord names in order of appearance on that line
+- Each "text" has placeholder syllables matching the rhythm — do NOT reproduce lyrics
+- Cover the FULL song: all verses, choruses, bridge, outro
+- Use standard named chords: D, A, G, C, Em, Am, Bm, Dsus4, A7, D/F#, G/B, etc.
+- Output ONLY the JSON object, nothing else`
 
 const LYRIC_ALIGN_PROMPT = (title, artist, lyrics) =>
-  `You are a guitar chord assistant. Below are the real lyrics for "${title}"${artist ? ` by ${artist}` : ''}. 
+  `You are a guitar chord expert. Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''} aligned to the real lyrics below.
 
-Generate a chord chart aligned to these lyrics. Put chord names in [brackets] on the line ABOVE each lyric line, positioned to match where the chord changes happen:
+STEP 1 - RESEARCH: Think carefully about the ACTUAL chord progression for this song. Recall from guitar tabs, sheet music, live performances. Do NOT default to generic progressions.
 
-[Eb]          [Bb]         [Eb]
-Do you have the time to listen to me whine
+STEP 2 - VERIFY: Double-check your choices. Many songs have simple progressions (2-4 chords). Verse is often simpler than chorus.
 
-Rules:
-- Use the real, accurate chord progression for this song
-- Align chord names above the exact word/syllable where the chord changes
-- Cover the FULL song — every verse, chorus, bridge, and outro from the lyrics below
-- Use standard named chords (G, C, D, Em, Am, Bb, Eb, etc.)
-- Only output the chord/lyric text, no explanations or extra text
+STEP 3 - OUTPUT: Return ONLY valid JSON:
+{
+  "sections": [
+    {
+      "name": "Verse 1",
+      "lines": [
+        {"chords": ["D", "A"], "text": "I got my first real six string"},
+        {"chords": ["D", "A"], "text": "Bought it at the five and dime"}
+      ]
+    }
+  ]
+}
+
+RULES:
+- Each "chords" array lists chords in order for that line
+- Each "text" is the actual lyric line
+- Cover the FULL song
+- Output ONLY the JSON object, nothing else
 
 LYRICS:
 ${lyrics}`
@@ -61,7 +89,7 @@ function apiMiddlewarePlugin(env) {
           const completion = await client.chat.completions.create({
             model: 'o4-mini',
             max_completion_tokens: 32768,
-            reasoning_effort: 'low',
+            reasoning_effort: 'medium',
             messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
           })
           return send(200, { content: completion.choices[0]?.message?.content || '' })
@@ -104,7 +132,7 @@ function apiMiddlewarePlugin(env) {
           const completion = await client.chat.completions.create({
             model: 'o4-mini',
             max_completion_tokens: 16384,
-            reasoning_effort: 'low',
+            reasoning_effort: 'medium',
             messages: [{ role: 'user', content: LYRIC_ALIGN_PROMPT(title, artist, rawLyrics) }]
           })
           const content = completion.choices[0]?.message?.content || ''

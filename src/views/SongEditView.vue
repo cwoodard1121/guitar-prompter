@@ -64,6 +64,46 @@ const loadingChords = ref(false)
 const loadingLyrics = ref(false)
 const chordError = ref('')
 
+// Convert AI JSON response to bracket format for the textarea/teleprompter
+// Input: { sections: [{ name, lines: [{ chords: ["D","A"], text: "..." }] }] }
+// Output: "[D]             [A]\nda da da da     da da da da\n..."
+function parseChordResponse(data) {
+  // If it's already a plain string (old format), return as-is
+  if (typeof data.content === 'string' && !data.content.trim().startsWith('{')) {
+    return data.content
+  }
+
+  // Try to parse as JSON
+  let json
+  try {
+    // content might be a JSON string
+    json = typeof data.content === 'string' ? JSON.parse(data.content) : data.content
+  } catch {
+    // Not JSON, return as-is
+    return data.content || ''
+  }
+
+  if (!json.sections || !Array.isArray(json.sections)) {
+    return data.content || ''
+  }
+
+  const lines = []
+  for (const section of json.sections) {
+    if (section.name) lines.push('')  // blank line before section
+    for (const line of section.lines || []) {
+      if (line.chords && line.chords.length > 0) {
+        // Build chord line with spacing
+        const chordLine = line.chords.map(c => `[${c}]`).join('  ')
+        lines.push(chordLine)
+      }
+      if (line.text) {
+        lines.push(line.text)
+      }
+    }
+  }
+  return lines.join('\n')
+}
+
 onMounted(() => {
   if (!isNew.value) {
     const song = store.getSong(route.params.id)
@@ -88,7 +128,7 @@ async function suggestChords() {
     const res = await fetch(`/api/chords?title=${encodeURIComponent(form.value.title)}&artist=${encodeURIComponent(form.value.artist)}`)
     if (!res.ok) throw new Error(await res.text())
     const data = await res.json()
-    if (data.content) form.value.content = data.content
+    form.value.content = parseChordResponse(data)
   } catch (e) {
     chordError.value = e.message || 'Could not fetch chord suggestions.'
   } finally {
@@ -106,7 +146,7 @@ async function suggestWithLyrics() {
       throw new Error(errData.error || 'Could not fetch lyrics.')
     }
     const data = await res.json()
-    if (data.content) form.value.content = data.content
+    form.value.content = parseChordResponse(data)
   } catch (e) {
     chordError.value = e.message || 'Could not fetch lyrics and chords.'
   } finally {

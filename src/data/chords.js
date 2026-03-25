@@ -52,11 +52,24 @@ export const CHORDS = {
   'Dsus2':  { fingers: [-1, -1, 0, 2, 3, 0], barres: [] },
   'Dsus4':  { fingers: [-1, -1, 0, 2, 3, 3], barres: [] },
   'Esus4':  { fingers: [0, 2, 2, 2, 0, 0], barres: [] },
+  'Gsus2':  { fingers: [3, 0, 0, 0, 3, 3], barres: [] },
+  'Gsus4':  { fingers: [3, 3, 0, 0, 1, 3], barres: [] },
+  'Csus2':  { fingers: [-1, 3, 0, 0, 1, 0], barres: [] },
 
   // Add9 chords
   'Cadd9':  { fingers: [-1, 3, 2, 0, 3, 0], barres: [] },
   'Dadd9':  { fingers: [-1, -1, 0, 2, 3, 0], barres: [] },
   'Gadd9':  { fingers: [3, 2, 0, 0, 0, 5], barres: [] },
+
+  // Slash chords (chord/bass note)
+  'D/F#':   { fingers: [2, -1, 0, 2, 3, 2], barres: [] },
+  'G/B':    { fingers: [-1, 2, 0, 0, 0, 3], barres: [] },
+  'C/G':    { fingers: [3, 3, 2, 0, 1, 0], barres: [] },
+  'A/G':    { fingers: [3, 0, 2, 2, 2, 0], barres: [] },
+  'F/C':    { fingers: [-1, 3, 3, 2, 1, 1], barres: [] },
+  'Em/B':   { fingers: [-1, 2, 2, 0, 0, 0], barres: [] },
+  'Am/G':   { fingers: [3, 0, 2, 2, 1, 0], barres: [] },
+  'E/B':    { fingers: [-1, 2, 2, 1, 0, 0], barres: [] },
 
   // Flat major chords
   'Ab':  { fingers: [4, 6, 6, 5, 4, 4], barres: [{ fromString: 6, toString: 1, fret: 4 }] },
@@ -98,8 +111,8 @@ export const CHORDS = {
 const CHROMATIC = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
 const FLAT_NAMES = { 'C#': 'Db', 'D#': 'Eb', 'F#': 'Gb', 'G#': 'Ab', 'A#': 'Bb' }
 
-// Regex to validate a chord name (must match what's inside the brackets)
-const CHORD_PATTERN = /^[A-G][#b]?(?:m(?:aj7|7)?|7|sus2|sus4|add9|5)?$/
+// Regex to validate a chord name (supports slash chords like D/F#, A/G)
+const CHORD_PATTERN = /^[A-G][#b]?(?:m(?:aj7|7)?|7|sus2|sus4|add9|5)?(?:\/[A-G][#b]?)?$/
 
 // Check if a string is a valid chord name
 export function isValidChord(name) {
@@ -122,8 +135,16 @@ export function getChord(name) {
 
 // Transpose a single chord name by N semitones
 // e.g. transposeChord('C', 1) => 'C#', transposeChord('Am', 1) => 'A#m'
+// Handles slash chords: transposeChord('D/F#', 1) => 'D#/G'
 export function transposeChord(name, semitones) {
   if (!semitones) return name
+
+  // Handle slash chords — transpose both root and bass
+  if (name.includes('/')) {
+    const [main, bass] = name.split('/')
+    return transposeChord(main, semitones) + '/' + transposeChord(bass, semitones)
+  }
+
   const match = name.match(/^([A-G][#b]?)(.*)$/)
   if (!match) return name
 
@@ -132,7 +153,6 @@ export function transposeChord(name, semitones) {
   // Normalize flats to sharps for indexing
   let normalized = root
   if (root.length === 2 && root[1] === 'b') {
-    // Convert flat to sharp of previous note
     const flatToSharp = { 'Db': 'C#', 'Eb': 'D#', 'Gb': 'F#', 'Ab': 'G#', 'Bb': 'A#' }
     normalized = flatToSharp[root] || root
   }
