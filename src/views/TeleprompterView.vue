@@ -71,7 +71,7 @@
       <button class="ctrl-btn chord-toggle-btn" :class="{ active: showChordDiagrams }" @click="showChordDiagrams = !showChordDiagrams">
         🎸
       </button>
-      <button class="ctrl-btn catchup-btn" @mousedown="startCatchUp" @mouseup="stopCatchUp" @mouseleave="stopCatchUp" @touchstart.prevent="startCatchUp" @touchend="stopCatchUp">
+      <button class="ctrl-btn catchup-btn" @click="catchUp">
         ⏩
       </button>
       <button class="ctrl-btn play-btn" @click="toggleScroll">
@@ -174,32 +174,10 @@ function toggleScroll() {
   scrolling.value = !scrolling.value
 }
 
-const CATCHUP_SPEED = 5 // 5x normal speed
-let catchUpRafId = null
-let catchUpLastTime = null
-const catchingUp = ref(false)
+const CATCHUP_JUMP = 800 // pixels per tap
 
-function catchUpTick(ts) {
-  if (!catchingUp.value) return
-  if (catchUpLastTime !== null) {
-    const dt = (ts - catchUpLastTime) / 1000
-    contentEl.value.scrollTop += speed.value * CATCHUP_SPEED * dt
-  }
-  catchUpLastTime = ts
-  catchUpRafId = requestAnimationFrame(catchUpTick)
-}
-
-function startCatchUp() {
-  catchingUp.value = true
-  catchUpLastTime = null
-  catchUpRafId = requestAnimationFrame(catchUpTick)
-}
-
-function stopCatchUp() {
-  catchingUp.value = false
-  if (catchUpRafId) cancelAnimationFrame(catchUpRafId)
-  catchUpRafId = null
-  catchUpLastTime = null
+function catchUp() {
+  contentEl.value.scrollBy({ top: CATCHUP_JUMP, behavior: 'smooth' })
 }
 
 watch(scrolling, (val) => {
@@ -229,7 +207,6 @@ function goHome() {
 
 onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId)
-  if (catchUpRafId) cancelAnimationFrame(catchUpRafId)
 })
 </script>
 
