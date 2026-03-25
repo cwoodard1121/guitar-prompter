@@ -139,15 +139,10 @@ const parsedLines = computed(() => {
     const chordLineMatch = /^\s*(\[[\w#b/]+\]\s*)+$/.test(raw)
     if (chordLineMatch) {
       const segments = []
-      let offset = 0
-      let cursor = 0
       const re = /\[([^\]]+)\]/g
       let m
       while ((m = re.exec(raw)) !== null) {
-        const charsBeforeThisChord = m.index - cursor
-        offset += charsBeforeThisChord
-        segments.push({ chord: m[1], offset: cursor === 0 ? offset : charsBeforeThisChord })
-        cursor = m.index + m[0].length
+        segments.push({ chord: m[1], offset: m.index })
       }
       result.push({ type: 'chord', segments })
       continue
@@ -366,6 +361,8 @@ onUnmounted(() => {
   line-height: 1.5;
   padding-bottom: 0.15em;
   color: #fff;
+  font-family: 'Courier New', monospace;
+  white-space: pre-wrap;
 }
 
 .tp-blank { height: 1em; }
