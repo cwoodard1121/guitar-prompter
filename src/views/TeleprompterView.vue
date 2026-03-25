@@ -11,6 +11,34 @@
         <span class="tp-title">{{ song?.title }}</span>
         <span class="tp-artist">{{ song?.artist }}</span>
       </div>
+
+      <!-- Chord diagrams panel -->
+      <div v-if="showChordDiagrams" class="tp-chord-diagrams">
+        <div class="tp-tuning-row">
+          <button class="tp-capo-btn" :class="{ active: !useBarre }" @click="useBarre = false">Capo</button>
+          <button class="tp-capo-btn" :class="{ active: useBarre }" @click="useBarre = true">No Capo</button>
+          <select v-model="selectedTuning" class="tp-tuning-select">
+            <option v-for="(tuning, key) in TUNINGS" :key="key" :value="key">
+              {{ tuning.name }}
+            </option>
+          </select>
+        </div>
+        <div class="tp-diagram-grid">
+          <div v-for="name in chordNames" :key="name" class="tp-diagram-item">
+            <ChordDiagram
+              v-if="getChord(name, useBarre)"
+              :name="name"
+              :chord="getChord(name, useBarre)"
+              :tuning="currentTuning.strings"
+            />
+            <div v-else class="tp-diagram-unknown">
+              <div class="tp-diagram-box">?</div>
+              <div class="tp-diagram-name">{{ name }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="tp-lines">
         <template v-for="(line, i) in parsedLines" :key="i">
           <div v-if="line.type === 'chord'" class="tp-chord-row">
@@ -39,6 +67,9 @@
         <button class="ctrl-btn speed-val">{{ speed }}</button>
         <button class="ctrl-btn" @click="speed = Math.min(200, speed + 5)">🐇</button>
       </div>
+      <button class="ctrl-btn chord-toggle-btn" :class="{ active: showChordDiagrams }" @click="showChordDiagrams = !showChordDiagrams">
+        🎸
+      </button>
       <button class="ctrl-btn play-btn" @click="toggleScroll">
         {{ scrolling ? '⏸' : '▶' }}
       </button>
@@ -55,6 +86,8 @@
 import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
+import ChordDiagram from '../components/ChordDiagram.vue'
+import { extractChordNames, getChord, TUNINGS } from '../data/chords.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -66,6 +99,16 @@ const fontSize = ref(24)
 const speed = ref(40)        // pixels per second
 const scrolling = ref(false)
 const controlsHidden = ref(false)
+const showChordDiagrams = ref(false)
+const selectedTuning = ref('Standard')
+const useBarre = ref(false)
+
+const currentTuning = computed(() => TUNINGS[selectedTuning.value] || TUNINGS['Standard'])
+
+const chordNames = computed(() => {
+  if (!song.value?.content) return []
+  return extractChordNames(song.value.content)
+})
 
 let rafId = null
 let lastTime = null
@@ -205,6 +248,92 @@ onUnmounted(() => {
   color: #aaa;
 }
 
+/* Chord diagrams panel */
+.tp-chord-diagrams {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 12px;
+  padding: 1rem;
+  margin-bottom: 1.5em;
+}
+
+.tp-tuning-row {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-bottom: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.tp-capo-btn {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.5);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 0.35rem 0.7rem;
+  font-size: 0.7em;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tp-capo-btn.active {
+  background: var(--chord, #f5c518);
+  color: #000;
+  border-color: var(--chord, #f5c518);
+}
+
+.tp-tuning-select {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.75em;
+  outline: none;
+}
+
+.tp-tuning-select option {
+  background: #1a1a2e;
+  color: #fff;
+}
+
+.tp-diagram-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: center;
+}
+
+.tp-diagram-item {
+  flex: 0 0 auto;
+}
+
+.tp-diagram-unknown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tp-diagram-box {
+  width: 80px;
+  height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border-radius: 8px;
+  color: #666;
+  font-size: 1.5em;
+}
+
+.tp-diagram-name {
+  font-weight: 700;
+  font-size: 0.8em;
+  color: #888;
+}
+
+/* Lines */
 .tp-lines {
   display: flex;
   flex-direction: column;
@@ -264,6 +393,11 @@ onUnmounted(() => {
   padding: 0.5rem 0.8rem;
   min-width: 2.5rem;
   text-align: center;
+}
+
+.chord-toggle-btn.active {
+  background: var(--chord, #f5c518);
+  color: #000;
 }
 
 .speed-val {
