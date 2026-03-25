@@ -71,6 +71,9 @@
       <button class="ctrl-btn chord-toggle-btn" :class="{ active: showChordDiagrams }" @click="showChordDiagrams = !showChordDiagrams">
         🎸
       </button>
+      <button class="ctrl-btn catchup-btn" @mousedown="startCatchUp" @mouseup="stopCatchUp" @mouseleave="stopCatchUp" @touchstart.prevent="startCatchUp" @touchend="stopCatchUp">
+        ⏩
+      </button>
       <button class="ctrl-btn play-btn" @click="toggleScroll">
         {{ scrolling ? '⏸' : '▶' }}
       </button>
@@ -171,6 +174,34 @@ function toggleScroll() {
   scrolling.value = !scrolling.value
 }
 
+const CATCHUP_SPEED = 5 // 5x normal speed
+let catchUpRafId = null
+let catchUpLastTime = null
+const catchingUp = ref(false)
+
+function catchUpTick(ts) {
+  if (!catchingUp.value) return
+  if (catchUpLastTime !== null) {
+    const dt = (ts - catchUpLastTime) / 1000
+    contentEl.value.scrollTop += speed.value * CATCHUP_SPEED * dt
+  }
+  catchUpLastTime = ts
+  catchUpRafId = requestAnimationFrame(catchUpTick)
+}
+
+function startCatchUp() {
+  catchingUp.value = true
+  catchUpLastTime = null
+  catchUpRafId = requestAnimationFrame(catchUpTick)
+}
+
+function stopCatchUp() {
+  catchingUp.value = false
+  if (catchUpRafId) cancelAnimationFrame(catchUpRafId)
+  catchUpRafId = null
+  catchUpLastTime = null
+}
+
 watch(scrolling, (val) => {
   if (val) {
     lastTime = null
@@ -198,6 +229,7 @@ function goHome() {
 
 onUnmounted(() => {
   if (rafId) cancelAnimationFrame(rafId)
+  if (catchUpRafId) cancelAnimationFrame(catchUpRafId)
 })
 </script>
 
@@ -256,6 +288,8 @@ onUnmounted(() => {
   border-radius: 12px;
   padding: 1rem;
   margin-bottom: 1.5em;
+  position: relative;
+  z-index: 15;
 }
 
 .tp-capo-row {
@@ -389,6 +423,15 @@ onUnmounted(() => {
 .chord-toggle-btn.active {
   background: var(--chord, #f5c518);
   color: #000;
+}
+
+.catchup-btn {
+  background: rgba(255, 200, 0, 0.2);
+  font-size: 1.1rem;
+}
+
+.catchup-btn:active {
+  background: rgba(255, 200, 0, 0.5);
 }
 
 .speed-val {

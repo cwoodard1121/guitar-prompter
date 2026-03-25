@@ -28,11 +28,8 @@
       </label>
 
       <div class="chord-suggest">
-        <button type="button" class="btn-suggest" :disabled="loadingChords || !form.title" @click="suggestChords">
-          {{ loadingChords ? 'Loading…' : '✨ Suggest chords' }}
-        </button>
         <button type="button" class="btn-suggest btn-lyrics" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
-          {{ loadingLyrics ? 'Loading…' : '🎵 Fetch lyrics &amp; chords' }}
+          {{ loadingLyrics ? 'Researching…' : '🎵 Fetch lyrics &amp; chords' }}
         </button>
         <span v-if="chordError" class="chord-error">{{ chordError }}</span>
       </div>
@@ -60,7 +57,6 @@ const store = useSongsStore()
 const isNew = computed(() => route.params.id === undefined)
 
 const form = ref({ title: '', artist: '', content: '' })
-const loadingChords = ref(false)
 const loadingLyrics = ref(false)
 const chordError = ref('')
 
@@ -88,11 +84,17 @@ function parseChordResponse(data) {
   }
 
   const lines = []
+
+  // Add capo info if present
+  if (json.capo && json.capo > 0) {
+    lines.push(`[capo ${json.capo}]`)
+    lines.push('')
+  }
+
   for (const section of json.sections) {
     if (section.name) lines.push('')  // blank line before section
     for (const line of section.lines || []) {
       if (line.chords && line.chords.length > 0) {
-        // Build chord line with spacing
         const chordLine = line.chords.map(c => `[${c}]`).join('  ')
         lines.push(chordLine)
       }
@@ -119,21 +121,6 @@ function save() {
     store.updateSong(route.params.id, form.value)
   }
   router.push('/')
-}
-
-async function suggestChords() {
-  loadingChords.value = true
-  chordError.value = ''
-  try {
-    const res = await fetch(`/api/chords?title=${encodeURIComponent(form.value.title)}&artist=${encodeURIComponent(form.value.artist)}`)
-    if (!res.ok) throw new Error(await res.text())
-    const data = await res.json()
-    form.value.content = parseChordResponse(data)
-  } catch (e) {
-    chordError.value = e.message || 'Could not fetch chord suggestions.'
-  } finally {
-    loadingChords.value = false
-  }
 }
 
 async function suggestWithLyrics() {
