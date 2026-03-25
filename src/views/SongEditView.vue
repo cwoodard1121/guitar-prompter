@@ -34,6 +34,11 @@
         <span v-if="chordError" class="chord-error">{{ chordError }}</span>
       </div>
 
+      <div v-if="loadingLyrics" class="progress-bar-track">
+        <div class="progress-bar-fill"></div>
+        <div class="progress-label">{{ loadingPhase }}</div>
+      </div>
+
       <ChordChart :content="form.content" />
 
       <div class="form-actions">
@@ -59,6 +64,32 @@ const isNew = computed(() => route.params.id === undefined)
 const form = ref({ title: '', artist: '', content: '' })
 const loadingLyrics = ref(false)
 const chordError = ref('')
+const loadingPhase = ref('')
+
+const LOADING_PHASES = [
+  'Fetching lyrics...',
+  'Researching chord progressions...',
+  'Analyzing guitar tabs...',
+  'Verifying accuracy...',
+  'Building chord chart...',
+]
+
+let loadingInterval = null
+
+function startLoadingPhases() {
+  let idx = 0
+  loadingPhase.value = LOADING_PHASES[0]
+  loadingInterval = setInterval(() => {
+    idx = (idx + 1) % LOADING_PHASES.length
+    loadingPhase.value = LOADING_PHASES[idx]
+  }, 3000)
+}
+
+function stopLoadingPhases() {
+  if (loadingInterval) clearInterval(loadingInterval)
+  loadingInterval = null
+  loadingPhase.value = ''
+}
 
 // Convert AI JSON response to bracket format for the textarea/teleprompter
 // Input: { sections: [{ name, lines: [{ chords: ["D","A"], text: "..." }] }] }
@@ -126,6 +157,7 @@ function save() {
 async function suggestWithLyrics() {
   loadingLyrics.value = true
   chordError.value = ''
+  startLoadingPhases()
   try {
     const res = await fetch(`/api/lyrics?title=${encodeURIComponent(form.value.title)}&artist=${encodeURIComponent(form.value.artist)}`)
     if (!res.ok) {
@@ -137,6 +169,7 @@ async function suggestWithLyrics() {
   } catch (e) {
     chordError.value = e.message || 'Could not fetch lyrics and chords.'
   } finally {
+    stopLoadingPhases()
     loadingLyrics.value = false
   }
 }
@@ -275,5 +308,43 @@ textarea {
   padding: 0.85rem 1.2rem;
   font-weight: 700;
   font-size: 1rem;
+}
+
+.progress-bar-track {
+  background: var(--bg);
+  border-radius: 99px;
+  height: 6px;
+  overflow: hidden;
+  position: relative;
+}
+
+.progress-bar-fill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  width: 40%;
+  background: var(--accent);
+  border-radius: 99px;
+  animation: progress-slide 1.8s ease-in-out infinite;
+}
+
+@keyframes progress-slide {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+
+.progress-label {
+  margin-top: 0.4rem;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  text-align: center;
+  animation: progress-fade 9s ease-in-out infinite;
+}
+
+@keyframes progress-fade {
+  0%, 100% { opacity: 0.7; }
+  33%      { opacity: 1; }
+  66%      { opacity: 0.7; }
 }
 </style>

@@ -99,7 +99,7 @@ function apiMiddlewarePlugin(env) {
           const completion = await client.chat.completions.create({
             model: 'o4-mini',
             max_completion_tokens: 32768,
-            reasoning_effort: 'high',
+            reasoning_effort: 'medium',
             messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
           })
           return send(200, { content: completion.choices[0]?.message?.content || '' })
@@ -142,7 +142,7 @@ function apiMiddlewarePlugin(env) {
           const completion = await client.chat.completions.create({
             model: 'o4-mini',
             max_completion_tokens: 16384,
-            reasoning_effort: 'high',
+            reasoning_effort: 'medium',
             messages: [{ role: 'user', content: LYRIC_ALIGN_PROMPT(title, artist, rawLyrics) }]
           })
           const content = completion.choices[0]?.message?.content || ''

@@ -99,7 +99,7 @@ export default async function handler(req, res) {
       const completion = await client.chat.completions.create({
         model: 'o4-mini',
         max_completion_tokens: 16384,
-        reasoning_effort: 'high',
+        reasoning_effort: 'medium',
         messages: [{ role: 'user', content: LYRIC_ALIGN_PROMPT(title, artist, rawLyrics) }]
       })
       const content = completion.choices[0]?.message?.content || ''
