@@ -1,33 +1,89 @@
 import OpenAI from 'openai'
 
 const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant. Generate a chord chart for the song "${title}"${artist ? ` by ${artist}` : ''}.
+  `Generate the MOST ACCURATE guitar chord chart possible for "${title}"${artist ? ` by ${artist}` : ''}.
 
-Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
+YOU MUST RESEARCH THIS. Do not guess. In your reasoning, work through each section one at a time.
 
-Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
+STEP BY STEP RESEARCH:
+1. Think: what genre? What era? What tuning?
+2. For EACH section, determine the EXACT chord for EACH LINE. Chords change throughout a section — they are NOT the same for every line.
+3. The verse chords are different from chorus chords. Within a verse, each line often has a DIFFERENT chord.
+4. Check if the song uses a capo.
+5. Cite your source URL.
 
-[Eb]          [Bb]         [Eb]
-da da-da da   da da-da da  da da
-[Eb]          [Bb]         [Cm]
-da da-da da   da da-da da  da-da-da
+CRITICAL — EACH LINE GETS ITS OWN CHORDS:
+- Do NOT repeat the same chords for every line in a section
+- Each line has its own chord or chords where the change happens
+- Example of WRONG (repeating): {"chords":["E","A"], "text":"line 1"}, {"chords":["E","A"], "text":"line 2"}
+- Example of RIGHT (per-line): {"chords":["E"], "text":"line 1"}, {"chords":["D"], "text":"line 2"}, {"chords":["A"], "text":"line 3"}, {"chords":["E"], "text":"line 4"}
+- A chord array with multiple chords means they change WITHIN that line: {"chords":["D","A"], "text":"line with two chords"}
+- Transition chords at end of line: {"chords":["E","B"], "text":"end of phrase"}
 
-Only output the chord/lyric text, no explanations. Cover the FULL song including all verses, choruses, and bridge if present. Use the accurate chords for this song.`
+OUTPUT — ONLY valid JSON:
+{
+  "capo": 0,
+  "source": "URL or source name",
+  "sections": [
+    {"name": "Intro", "lines": [{"chords": ["C#m","A","E","B"], "text": ""}]},
+    {"name": "Verse 1", "lines": [
+      {"chords": ["E"], "text": "da da da da da da"},
+      {"chords": ["D"], "text": "da da da da da da"},
+      {"chords": ["A"], "text": "da da da da da da"},
+      {"chords": ["E"], "text": "da da da da da da da da da"}
+    ]},
+    {"name": "Chorus", "lines": [
+      {"chords": ["C#m","A","E","B"], "text": "da da da da da da"},
+      {"chords": ["C#m","A","E","B"], "text": "da da da da da da"}
+    ]}
+  ]
+}
+
+RULES:
+- Cover the FULL song with every section and every line
+- "text": placeholder syllables matching rhythm. Empty "" for instrumental.
+- Output ONLY the JSON, nothing else`
 
 const LYRIC_ALIGN_PROMPT = (title, artist, lyrics) =>
-  `You are a guitar chord assistant. Below are the real lyrics for "${title}"${artist ? ` by ${artist}` : ''}. 
+  `Generate the MOST ACCURATE guitar chord chart for "${title}"${artist ? ` by ${artist}` : ''} aligned to the real lyrics below.
 
-Generate a chord chart aligned to these lyrics. Put chord names in [brackets] on the line ABOVE each lyric line, positioned to match where the chord changes happen:
+YOU MUST RESEARCH THIS. In your reasoning, work through each section one at a time.
 
-[Eb]          [Bb]         [Eb]
-Do you have the time to listen to me whine
+STEP BY STEP:
+1. Read the lyrics and identify each section
+2. For EACH LYRIC LINE, determine the EXACT chord. Each line often has a DIFFERENT chord.
+3. Chords change WITHIN lines too — a line might go from D to A mid-sentence.
+4. Add intro/interlude sections (no lyrics) before verse sections.
+5. Cite your source URL.
 
-Rules:
-- Use the real, accurate chord progression for this song
-- Align chord names above the exact word/syllable where the chord changes
-- Cover the FULL song — every verse, chorus, bridge, and outro from the lyrics below
-- Use standard named chords (G, C, D, Em, Am, Bb, Eb, etc.)
-- Only output the chord/lyric text, no explanations or extra text
+CRITICAL — EACH LINE GETS ITS OWN CHORDS:
+- Do NOT repeat the same chords for every line
+- Each line has its own chord(s) where the change happens
+- Example of WRONG: {"chords":["E","A"], "text":"line 1"}, {"chords":["E","A"], "text":"line 2"}
+- Example of RIGHT: {"chords":["E"], "text":"Now if you're feeling kinda low"}, {"chords":["D"], "text":"'bout the dues you've been paying"}, {"chords":["A"], "text":"Future's coming much too slow"}, {"chords":["E"], "text":"And you wanna run..."}
+- Multiple chords in one array means they change within that line
+- Transition chords at end: {"chords":["E","B"], "text":"end of phrase"}
+
+OUTPUT — ONLY valid JSON:
+{
+  "capo": 0,
+  "source": "URL or source name",
+  "sections": [
+    {"name": "Intro", "lines": [{"chords": ["C#m","A","E","B"], "text": ""}]},
+    {"name": "Verse 1", "lines": [
+      {"chords": ["E"], "text": "Now if you're feeling kinda low"},
+      {"chords": ["D"], "text":"'bout the dues you've been paying"},
+      {"chords": ["A","E"], "text": "Future's coming much too slow"},
+      {"chords": ["E"], "text": "And you wanna run but somehow you just keep on staying"},
+      {"chords": ["D"], "text": "Can't decide on which way to go"},
+      {"chords": ["A","B"], "text": "Yeah yeah yeah"}
+    ]}
+  ]
+}
+
+RULES:
+- Cover the FULL song including intros, outros
+- Output ONLY the JSON, nothing else
 
 LYRICS:
 ${lyrics}`
@@ -45,7 +101,6 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
   }
 
-  // Lyrics endpoint: fetch from lyrics.ovh then align with chords
   if (path.includes('/lyrics')) {
     try {
       const lyricsUrl = `https://api.lyrics.ovh/v1/${encodeURIComponent(artist || 'unknown')}/${encodeURIComponent(title)}`
@@ -61,8 +116,8 @@ export default async function handler(req, res) {
       const client = new OpenAI({ apiKey })
       const completion = await client.chat.completions.create({
         model: 'o4-mini',
-        max_completion_tokens: 16384,
-        reasoning_effort: 'low',
+        max_completion_tokens: 32768,
+        reasoning_effort: 'high',
         messages: [{ role: 'user', content: LYRIC_ALIGN_PROMPT(title, artist, rawLyrics) }]
       })
       const content = completion.choices[0]?.message?.content || ''
@@ -72,13 +127,12 @@ export default async function handler(req, res) {
     }
   }
 
-  // Chords endpoint: placeholder syllables
   try {
     const client = new OpenAI({ apiKey })
     const completion = await client.chat.completions.create({
       model: 'o4-mini',
       max_completion_tokens: 32768,
-      reasoning_effort: 'low',
+      reasoning_effort: 'high',
       messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
     })
     return res.status(200).json({ content: completion.choices[0]?.message?.content || '' })

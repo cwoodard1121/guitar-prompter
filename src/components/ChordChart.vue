@@ -1,42 +1,61 @@
 <template>
-  <div class="chord-chart" v-if="chordNames.length > 0">
+  <div class="chord-chart" v-if="displayChords.length > 0">
     <div class="chord-chart-header">
       <h3>Chord Diagrams</h3>
       <div class="chord-chart-controls">
         <button
           class="capo-toggle"
-          :class="{ active: !useBarre }"
-          @click="useBarre = false"
-          title="Open chord shapes (capo)"
-        >
-          Capo
-        </button>
-        <button
-          class="capo-toggle"
-          :class="{ active: useBarre }"
-          @click="useBarre = true"
-          title="Barre chord shapes (no capo)"
+          :class="{ active: capoFret === 0 }"
+          @click="capoFret = 0"
         >
           No Capo
         </button>
-        <select v-model="selectedTuning" class="tuning-select">
-          <option v-for="(tuning, key) in TUNINGS" :key="key" :value="key">
-            {{ tuning.name }} ({{ tuning.strings.join(' ') }})
-          </option>
-        </select>
+        <button
+          class="capo-toggle"
+          :class="{ active: capoFret === 1 }"
+          @click="capoFret = capoFret === 1 ? 0 : 1"
+        >
+          Capo 1
+        </button>
+        <button
+          class="capo-toggle"
+          :class="{ active: capoFret === 2 }"
+          @click="capoFret = capoFret === 2 ? 0 : 2"
+        >
+          Capo 2
+        </button>
+        <button
+          class="capo-toggle"
+          :class="{ active: capoFret === 3 }"
+          @click="capoFret = capoFret === 3 ? 0 : 3"
+        >
+          Capo 3
+        </button>
+        <button
+          class="capo-toggle"
+          :class="{ active: capoFret === 4 }"
+          @click="capoFret = capoFret === 4 ? 0 : 4"
+        >
+          Capo 4
+        </button>
       </div>
     </div>
     <div class="chord-grid">
-      <div v-for="name in chordNames" :key="name" class="chord-item">
-        <ChordDiagram
-          v-if="getChord(name, useBarre)"
-          :name="name"
-          :chord="getChord(name, useBarre)"
-          :tuning="currentTuning.strings"
-        />
-        <div v-else class="chord-unknown">
-          <div class="chord-unknown-box">?</div>
-          <div class="chord-name">{{ name }}</div>
+      <div v-for="chord in displayChords" :key="chord.displayName" class="chord-item">
+        <div class="chord-diagram-wrap">
+          <ChordDiagram
+            v-if="chord.data"
+            :name="chord.shapeName"
+            :chord="chord.data"
+            :tuning="['E', 'A', 'D', 'G', 'B', 'E']"
+          />
+          <div v-else class="chord-unknown">
+            <div class="chord-unknown-box">?</div>
+            <div class="chord-name">{{ chord.shapeName }}</div>
+          </div>
+          <div v-if="capoFret > 0" class="chord-sounds-as">
+            sounds as {{ chord.displayName }}
+          </div>
         </div>
       </div>
     </div>
@@ -46,17 +65,34 @@
 <script setup>
 import { ref, computed } from 'vue'
 import ChordDiagram from './ChordDiagram.vue'
-import { extractChordNames, getChord, TUNINGS } from '../data/chords.js'
+import { extractChordNames, getChord, transposeChord } from '../data/chords.js'
 
 const props = defineProps({
   content: { type: String, default: '' }
 })
 
-const selectedTuning = ref('Standard')
-const useBarre = ref(false)
-const currentTuning = computed(() => TUNINGS[selectedTuning.value] || TUNINGS['Standard'])
+const capoFret = ref(0)
 
-const chordNames = computed(() => extractChordNames(props.content))
+// Original chord names from the content
+const originalChordNames = computed(() => extractChordNames(props.content))
+
+// When capo is on: show the shape you finger (chord transposed DOWN)
+// The "sounds as" label shows the original chord name
+const displayChords = computed(() => {
+  return originalChordNames.value.map(name => {
+    let shapeName
+    if (capoFret.value > 0) {
+      shapeName = transposeChord(name, -capoFret.value)
+    } else {
+      shapeName = name
+    }
+    return {
+      displayName: name,
+      shapeName,
+      data: getChord(shapeName)
+    }
+  })
+})
 </script>
 
 <style scoped>
@@ -85,7 +121,8 @@ const chordNames = computed(() => extractChordNames(props.content))
 .chord-chart-controls {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
+  flex-wrap: wrap;
 }
 
 .capo-toggle {
@@ -93,7 +130,7 @@ const chordNames = computed(() => extractChordNames(props.content))
   color: var(--text-muted);
   border: 1px solid #333;
   border-radius: var(--radius);
-  padding: 0.35rem 0.7rem;
+  padding: 0.35rem 0.6rem;
   font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
@@ -106,20 +143,6 @@ const chordNames = computed(() => extractChordNames(props.content))
   border-color: var(--accent);
 }
 
-.tuning-select {
-  background: var(--bg);
-  color: var(--text);
-  border: 1px solid #333;
-  border-radius: var(--radius);
-  padding: 0.35rem 0.6rem;
-  font-size: 0.75rem;
-  outline: none;
-}
-
-.tuning-select:focus {
-  border-color: var(--accent);
-}
-
 .chord-grid {
   display: flex;
   flex-wrap: wrap;
@@ -129,6 +152,18 @@ const chordNames = computed(() => extractChordNames(props.content))
 
 .chord-item {
   flex: 0 0 auto;
+}
+
+.chord-diagram-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.chord-sounds-as {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: -0.1rem;
 }
 
 .chord-unknown {

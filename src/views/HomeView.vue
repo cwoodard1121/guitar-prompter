@@ -31,9 +31,9 @@ import { useSongsStore } from '../stores/songs.js'
 
 const store = useSongsStore()
 
-function confirmDelete(song) {
+async function confirmDelete(song) {
   if (confirm(`Delete "${song.title}"?`)) {
-    store.deleteSong(song.id)
+    await store.deleteSong(song.id)
   }
 }
 </script>

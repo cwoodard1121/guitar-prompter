@@ -1,9 +1,9 @@
 <template>
   <div class="tp-root" :style="{ fontSize: fontSize + 'px' }">
 
-    <!-- Tap zones (invisible, full height) -->
-    <div class="tap-zone tap-left" @click="scrollBack"></div>
-    <div class="tap-zone tap-right" @click="scrollForward"></div>
+    <!-- Tap zones (invisible, full height) — hidden when chord diagrams showing -->
+    <div class="tap-zone tap-left" :class="{ disabled: showChordDiagrams }" @click="scrollBack"></div>
+    <div class="tap-zone tap-right" :class="{ disabled: showChordDiagrams }" @click="scrollForward"></div>
 
     <!-- Song content -->
     <div ref="contentEl" class="tp-content">
@@ -14,26 +14,27 @@
 
       <!-- Chord diagrams panel -->
       <div v-if="showChordDiagrams" class="tp-chord-diagrams">
-        <div class="tp-tuning-row">
-          <button class="tp-capo-btn" :class="{ active: !useBarre }" @click="useBarre = false">Capo</button>
-          <button class="tp-capo-btn" :class="{ active: useBarre }" @click="useBarre = true">No Capo</button>
-          <select v-model="selectedTuning" class="tp-tuning-select">
-            <option v-for="(tuning, key) in TUNINGS" :key="key" :value="key">
-              {{ tuning.name }}
-            </option>
-          </select>
+        <div class="tp-capo-row">
+          <button class="tp-capo-btn" :class="{ active: capoFret === 0 }" @click="capoFret = 0">No Capo</button>
+          <button class="tp-capo-btn" :class="{ active: capoFret === 1 }" @click="capoFret = capoFret === 1 ? 0 : 1">Capo 1</button>
+          <button class="tp-capo-btn" :class="{ active: capoFret === 2 }" @click="capoFret = capoFret === 2 ? 0 : 2">Capo 2</button>
+          <button class="tp-capo-btn" :class="{ active: capoFret === 3 }" @click="capoFret = capoFret === 3 ? 0 : 3">Capo 3</button>
+          <button class="tp-capo-btn" :class="{ active: capoFret === 4 }" @click="capoFret = capoFret === 4 ? 0 : 4">Capo 4</button>
         </div>
         <div class="tp-diagram-grid">
-          <div v-for="name in chordNames" :key="name" class="tp-diagram-item">
-            <ChordDiagram
-              v-if="getChord(name, useBarre)"
-              :name="name"
-              :chord="getChord(name, useBarre)"
-              :tuning="currentTuning.strings"
-            />
-            <div v-else class="tp-diagram-unknown">
-              <div class="tp-diagram-box">?</div>
-              <div class="tp-diagram-name">{{ name }}</div>
+          <div v-for="chord in displayChords" :key="chord.displayName" class="tp-diagram-item">
+            <div class="tp-diagram-wrap">
+              <ChordDiagram
+                v-if="chord.data"
+                :name="chord.shapeName"
+                :chord="chord.data"
+                :tuning="['E', 'A', 'D', 'G', 'B', 'E']"
+              />
+              <div v-else class="tp-diagram-unknown">
+                <div class="tp-diagram-box">?</div>
+                <div class="tp-diagram-name">{{ chord.shapeName }}</div>
+              </div>
+              <div v-if="capoFret > 0" class="tp-sounds-as">{{ chord.displayName }}</div>
             </div>
           </div>
         </div>
@@ -46,6 +47,7 @@
               v-for="(seg, j) in line.segments"
               :key="j"
               class="tp-chord"
+              :class="{ 'tp-chord-transition': j === line.segments.length - 1 }"
               :style="{ marginLeft: seg.offset + 'ch' }"
             >{{ seg.chord }}</span>
           </div>
@@ -70,6 +72,9 @@
       <button class="ctrl-btn chord-toggle-btn" :class="{ active: showChordDiagrams }" @click="showChordDiagrams = !showChordDiagrams">
         🎸
       </button>
+      <button class="ctrl-btn catchup-btn" @click="catchUp">
+        ⏩
+      </button>
       <button class="ctrl-btn play-btn" @click="toggleScroll">
         {{ scrolling ? '⏸' : '▶' }}
       </button>
@@ -87,7 +92,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import ChordDiagram from '../components/ChordDiagram.vue'
-import { extractChordNames, getChord, TUNINGS } from '../data/chords.js'
+import { extractChordNames, getChord, transposeChord } from '../data/chords.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -96,24 +101,31 @@ const store = useSongsStore()
 const song = computed(() => store.getSong(route.params.id))
 const contentEl = ref(null)
 const fontSize = ref(24)
-const speed = ref(40)        // pixels per second
+const speed = ref(40)
 const scrolling = ref(false)
 const controlsHidden = ref(false)
 const showChordDiagrams = ref(false)
-const selectedTuning = ref('Standard')
-const useBarre = ref(false)
-
-const currentTuning = computed(() => TUNINGS[selectedTuning.value] || TUNINGS['Standard'])
+const capoFret = ref(0)
 
 const chordNames = computed(() => {
   if (!song.value?.content) return []
   return extractChordNames(song.value.content)
 })
 
+const displayChords = computed(() => {
+  return chordNames.value.map(name => {
+    let shapeName = capoFret.value > 0 ? transposeChord(name, -capoFret.value) : name
+    return {
+      displayName: name,
+      shapeName,
+      data: getChord(shapeName)
+    }
+  })
+})
+
 let rafId = null
 let lastTime = null
 
-// Parse content: lines with [Chord] markers become chord rows above lyric rows
 const parsedLines = computed(() => {
   if (!song.value?.content) return []
   const lines = song.value.content.split('\n')
@@ -125,25 +137,22 @@ const parsedLines = computed(() => {
       continue
     }
 
-    // Detect chord-only lines: lines where all text is inside [] or spaces
     const chordLineMatch = /^\s*(\[[\w#b/]+\]\s*)+$/.test(raw)
     if (chordLineMatch) {
       const segments = []
-      let offset = 0
-      let cursor = 0
       const re = /\[([^\]]+)\]/g
       let m
+      let prevAbsEnd = 0
       while ((m = re.exec(raw)) !== null) {
-        const charsBeforeThisChord = m.index - cursor
-        offset += charsBeforeThisChord
-        segments.push({ chord: m[1], offset: cursor === 0 ? offset : charsBeforeThisChord })
-        cursor = m.index + m[0].length
+        const chordName = m[1]
+        const relOffset = m.index - prevAbsEnd
+        segments.push({ chord: chordName, offset: relOffset })
+        prevAbsEnd = m.index + chordName.length
       }
       result.push({ type: 'chord', segments })
       continue
     }
 
-    // Inline chords: strip [] for lyric display
     const lyric = raw.replace(/\[[\w#b/]+\]/g, '').trimEnd()
     result.push({ type: 'lyric', text: lyric || raw })
   }
@@ -163,6 +172,12 @@ function tick(ts) {
 
 function toggleScroll() {
   scrolling.value = !scrolling.value
+}
+
+const CATCHUP_JUMP = 800 // pixels per tap
+
+function catchUp() {
+  contentEl.value.scrollBy({ top: CATCHUP_JUMP, behavior: 'smooth' })
 }
 
 watch(scrolling, (val) => {
@@ -206,7 +221,6 @@ onUnmounted(() => {
   overflow: hidden;
 }
 
-/* Invisible tap zones */
 .tap-zone {
   position: fixed;
   top: 0;
@@ -214,10 +228,12 @@ onUnmounted(() => {
   width: 30%;
   z-index: 10;
 }
+.tap-zone.disabled {
+  pointer-events: none;
+}
 .tap-left  { left: 0; }
 .tap-right { right: 0; }
 
-/* Scrollable content */
 .tp-content {
   flex: 1;
   overflow-y: auto;
@@ -225,7 +241,6 @@ onUnmounted(() => {
   padding: 5rem 1.5rem 6rem;
   scroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
-  /* Hide scrollbar */
   scrollbar-width: none;
 }
 .tp-content::-webkit-scrollbar { display: none; }
@@ -248,7 +263,6 @@ onUnmounted(() => {
   color: #aaa;
 }
 
-/* Chord diagrams panel */
 .tp-chord-diagrams {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 12px;
@@ -256,10 +270,10 @@ onUnmounted(() => {
   margin-bottom: 1.5em;
 }
 
-.tp-tuning-row {
+.tp-capo-row {
   display: flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: 0.3rem;
   margin-bottom: 0.75rem;
   flex-wrap: wrap;
 }
@@ -269,7 +283,7 @@ onUnmounted(() => {
   color: rgba(255, 255, 255, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 8px;
-  padding: 0.35rem 0.7rem;
+  padding: 0.35rem 0.6rem;
   font-size: 0.7em;
   font-weight: 600;
   cursor: pointer;
@@ -282,21 +296,6 @@ onUnmounted(() => {
   border-color: var(--chord, #f5c518);
 }
 
-.tp-tuning-select {
-  background: rgba(255, 255, 255, 0.1);
-  color: #fff;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 8px;
-  padding: 0.4rem 0.6rem;
-  font-size: 0.75em;
-  outline: none;
-}
-
-.tp-tuning-select option {
-  background: #1a1a2e;
-  color: #fff;
-}
-
 .tp-diagram-grid {
   display: flex;
   flex-wrap: wrap;
@@ -304,8 +303,18 @@ onUnmounted(() => {
   justify-content: center;
 }
 
-.tp-diagram-item {
-  flex: 0 0 auto;
+.tp-diagram-item { flex: 0 0 auto; }
+
+.tp-diagram-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.tp-sounds-as {
+  font-size: 0.65em;
+  color: #888;
+  margin-top: -0.1em;
 }
 
 .tp-diagram-unknown {
@@ -333,7 +342,6 @@ onUnmounted(() => {
   color: #888;
 }
 
-/* Lines */
 .tp-lines {
   display: flex;
   flex-direction: column;
@@ -354,17 +362,21 @@ onUnmounted(() => {
   white-space: pre;
 }
 
+.tp-chord-transition {
+  opacity: 0.5;
+  margin-left: 1ch !important;
+}
+
 .tp-lyric-row {
   line-height: 1.5;
   padding-bottom: 0.15em;
   color: #fff;
+  font-family: 'Courier New', monospace;
+  white-space: pre-wrap;
 }
 
-.tp-blank {
-  height: 1em;
-}
+.tp-blank { height: 1em; }
 
-/* Controls */
 .tp-controls {
   position: fixed;
   top: 0;
@@ -380,9 +392,7 @@ onUnmounted(() => {
   transition: transform 0.25s ease;
 }
 
-.tp-controls.hidden {
-  transform: translateY(-110%);
-}
+.tp-controls.hidden { transform: translateY(-110%); }
 
 .ctrl-btn {
   background: rgba(255,255,255,0.12);
@@ -398,6 +408,15 @@ onUnmounted(() => {
 .chord-toggle-btn.active {
   background: var(--chord, #f5c518);
   color: #000;
+}
+
+.catchup-btn {
+  background: rgba(255, 200, 0, 0.2);
+  font-size: 1.1rem;
+}
+
+.catchup-btn:active {
+  background: rgba(255, 200, 0, 0.5);
 }
 
 .speed-val {
@@ -418,7 +437,6 @@ onUnmounted(() => {
   gap: 0.25rem;
 }
 
-/* Toggle tab */
 .ctrl-toggle {
   position: fixed;
   top: 0;
