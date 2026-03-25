@@ -142,8 +142,12 @@ const parsedLines = computed(() => {
       const segments = []
       const re = /\[([^\]]+)\]/g
       let m
+      let prevAbsEnd = 0
       while ((m = re.exec(raw)) !== null) {
-        segments.push({ chord: m[1], offset: m.index })
+        const chordName = m[1]
+        const relOffset = m.index - prevAbsEnd
+        segments.push({ chord: chordName, offset: relOffset })
+        prevAbsEnd = m.index + chordName.length
       }
       result.push({ type: 'chord', segments })
       continue

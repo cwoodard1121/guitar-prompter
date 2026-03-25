@@ -17,7 +17,7 @@ function isChordOnlyLine(line) {
 
 // Check if a line is a section label like [Verse 1], [Chorus], etc.
 function isSectionLabel(line) {
-  return /^\s*\[.*\]\s*$/.test(line.trim()) && !isChordOnlyLine(line)
+  return /^\s*\[[^\]]*\]\s*$/.test(line.trim()) && !isChordOnlyLine(line)
 }
 
 // Extract chords and their column positions from a chord-only line
@@ -31,8 +31,48 @@ function parseChordLine(line) {
   return chords
 }
 
-// Convert a chord+lyric pair into our bracket format
-// Chord at col X aligns with lyric character at col X
+// Convert inline [Chord] format to our bracket format
+// Input: "[G]long, [D/F#]long tim[Em]e ago"
+// Output: "[G]  [D/F#]        [Em]\nlong, long time ago"
+function convertInlineChords(line) {
+  const chordPattern = /\[([A-G][#b]?(?:m(?:aj7|7)?|7|sus2|sus4|add9|dim|aug|5)?(?:\/[A-G][#b]?)?)\]/g
+
+  const chords = []
+  const textParts = []
+  let lastEnd = 0
+  let lyricsPos = 0
+  let m
+
+  // Extract chords and track their positions in the pure lyric text
+  while ((m = chordPattern.exec(line)) !== null) {
+    // Text before this chord
+    const textBefore = line.substring(lastEnd, m.index)
+    textParts.push(textBefore)
+    lyricsPos += textBefore.length
+
+    // Record chord position
+    chords.push({ chord: m[1], col: lyricsPos })
+
+    lastEnd = m.index + m[0].length
+  }
+
+  // Text after last chord
+  textParts.push(line.substring(lastEnd))
+
+  // Build pure lyric
+  const lyric = textParts.join('')
+
+  // If no chords found, return as-is
+  if (chords.length === 0) {
+    return line
+  }
+
+  // Use alignChordToLyric to create the two-line format
+  return alignChordToLyric(chords, lyric)
+}
+
+// Convert a chord+lyric pair into two-line format for the teleprompter
+// Builds a chord line where bracket positions match lyric character positions
 function alignChordToLyric(chords, lyric) {
   if (!chords.length) return lyric
   if (!lyric.trim()) {
@@ -40,38 +80,29 @@ function alignChordToLyric(chords, lyric) {
     return chords.map(c => `[${c.chord}]`).join('  ')
   }
 
-  // Build a character array for the lyric
-  const lyricChars = lyric.split('')
-  const chordMap = new Map() // position -> chord name
+  // Sort chords by column position
+  const sortedChords = [...chords].sort((a, b) => a.col - b.col)
 
-  for (const { chord, col } of chords) {
-    // Find the nearest non-space character at or after this column
-    let pos = col
-    while (pos < lyricChars.length && lyricChars[pos] === ' ') {
-      pos++
+  // Build chord line character by character
+  // Create a buffer as long as the lyric plus space for trailing chords
+  const buffer = []
+  let bufferPos = 0
+
+  for (const { chord, col } of sortedChords) {
+    // Pad with spaces up to this chord's position in the lyric
+    while (bufferPos < col) {
+      buffer.push(' ')
+      bufferPos++
     }
-    if (pos >= lyricChars.length) {
-      pos = lyricChars.length // past end of lyric
-    }
-    chordMap.set(pos, chord)
+
+    // Add the chord bracket
+    const chordStr = `[${chord}]`
+    buffer.push(chordStr)
+    bufferPos += chordStr.length
   }
 
-  // Build the bracket format: [Chord]lyric text
-  let result = ''
-  for (let i = 0; i < lyricChars.length; i++) {
-    if (chordMap.has(i)) {
-      result += `[${chordMap.get(i)}]`
-    }
-    result += lyricChars[i]
-  }
-  // Any chords past the lyric go at the end
-  for (const [pos, chord] of chordMap) {
-    if (pos >= lyricChars.length) {
-      result += ` [${chord}]`
-    }
-  }
-
-  return result.trimEnd()
+  const chordLine = buffer.join('')
+  return chordLine + '\n' + lyric
 }
 
 // Main parser: convert raw tab text to our bracket format
@@ -124,8 +155,8 @@ export function parseTabText(raw) {
     } else {
       // No pending chords — check for inline [Chord] format
       if (line.includes('[') && /\[[A-G]/.test(line)) {
-        // Already has inline chords — keep as-is
-        output.push(line)
+        // Convert inline chords to bracket format
+        output.push(convertInlineChords(line))
       } else {
         // Plain lyric line with no chords
         output.push(line)

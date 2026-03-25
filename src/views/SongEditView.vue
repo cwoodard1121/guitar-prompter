@@ -179,13 +179,17 @@ onMounted(() => {
   }
 })
 
-function save() {
-  if (isNew.value) {
-    store.addSong(form.value)
-  } else {
-    store.updateSong(route.params.id, form.value)
+async function save() {
+  try {
+    if (isNew.value) {
+      await store.addSong(form.value)
+    } else {
+      await store.updateSong(route.params.id, form.value)
+    }
+    router.push('/')
+  } catch (e) {
+    chordError.value = 'Failed to save song: ' + (e.message || 'Unknown error')
   }
-  router.push('/')
 }
 
 async function suggestWithLyrics() {
