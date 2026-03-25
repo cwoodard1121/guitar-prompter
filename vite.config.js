@@ -91,6 +91,28 @@ RULES:
 LYRICS:
 ${lyrics}`
 
+const FORMAT_PROMPT = (tabText) =>
+  `Clean up and format this guitar tab text. DO NOT change any chords — only fix formatting and alignment.
+
+RULES:
+- Keep EVERY chord exactly as it is. Do not add, remove, or change any chord names.
+- Keep EVERY lyric line exactly as it is (word for word).
+- Align chords to the correct words above them.
+- Remove section labels like [Verse 1], [Chorus] — they're not needed.
+- Remove repeat markers like x2, x4 — just repeat the chords/lines.
+- Remove guitar tab notation (e|---| lines, fret numbers).
+- Remove metadata (Capo:, Tuning:, etc.) unless it's a capo indicator.
+- Output clean text with chords on their own lines above the lyrics they align with.
+
+OUTPUT FORMAT — plain text, chords above lyrics:
+C#m  A   E  B
+Now, if you're feeling kinda low
+D               A        E
+Future's coming much too slow
+
+TAB TEXT:
+${tabText}`
+
 function apiMiddlewarePlugin(env) {
   return {
     name: 'api-middleware',
@@ -165,6 +187,43 @@ function apiMiddlewarePlugin(env) {
           })
           const content = completion.choices[0]?.message?.content || ''
           return send(200, { content, rawLyrics })
+        } catch (err) {
+          return send(500, { error: err.message })
+        }
+      })
+
+      // Format endpoint: AI cleans up pasted tab text without changing chords
+      server.middlewares.use('/api/format', async (req, res) => {
+        const send = (code, data) => {
+          res.statusCode = code
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(data))
+        }
+
+        // Read body
+        let body = ''
+        await new Promise((resolve) => {
+          req.on('data', chunk => body += chunk)
+          req.on('end', resolve)
+        })
+        let tabText = ''
+        try { tabText = JSON.parse(body).tabText || '' } catch {}
+
+        if (!tabText.trim()) return send(400, { error: 'tabText is required' })
+
+        const apiKey = env.OPENAI_API_KEY
+        if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
+
+        try {
+          const client = new OpenAI({ apiKey })
+          const completion = await client.chat.completions.create({
+            model: 'o4-mini',
+            max_completion_tokens: 16384,
+            reasoning_effort: 'low',
+            messages: [{ role: 'user', content: FORMAT_PROMPT(tabText) }]
+          })
+          const content = completion.choices[0]?.message?.content || ''
+          return send(200, { content })
         } catch (err) {
           return send(500, { error: err.message })
         }
