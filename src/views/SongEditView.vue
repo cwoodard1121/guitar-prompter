@@ -27,12 +27,17 @@
         ></textarea>
       </label>
 
-      <div class="chord-suggest" v-if="isNew">
+      <div class="chord-suggest">
         <button type="button" class="btn-suggest" :disabled="loadingChords || !form.title" @click="suggestChords">
-          {{ loadingChords ? 'Loading…' : '✨ Suggest chords with AI' }}
+          {{ loadingChords ? 'Loading…' : '✨ Suggest chords' }}
+        </button>
+        <button type="button" class="btn-suggest btn-lyrics" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
+          {{ loadingLyrics ? 'Loading…' : '🎵 Fetch lyrics &amp; chords' }}
         </button>
         <span v-if="chordError" class="chord-error">{{ chordError }}</span>
       </div>
+
+      <ChordChart :content="form.content" />
 
       <div class="form-actions">
         <button type="submit" class="btn-save">Save Song</button>
@@ -46,6 +51,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
+import ChordChart from '../components/ChordChart.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -55,6 +61,7 @@ const isNew = computed(() => route.params.id === undefined)
 
 const form = ref({ title: '', artist: '', content: '' })
 const loadingChords = ref(false)
+const loadingLyrics = ref(false)
 const chordError = ref('')
 
 onMounted(() => {
@@ -86,6 +93,24 @@ async function suggestChords() {
     chordError.value = e.message || 'Could not fetch chord suggestions.'
   } finally {
     loadingChords.value = false
+  }
+}
+
+async function suggestWithLyrics() {
+  loadingLyrics.value = true
+  chordError.value = ''
+  try {
+    const res = await fetch(`/api/lyrics?title=${encodeURIComponent(form.value.title)}&artist=${encodeURIComponent(form.value.artist)}`)
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}))
+      throw new Error(errData.error || 'Could not fetch lyrics.')
+    }
+    const data = await res.json()
+    if (data.content) form.value.content = data.content
+  } catch (e) {
+    chordError.value = e.message || 'Could not fetch lyrics and chords.'
+  } finally {
+    loadingLyrics.value = false
   }
 }
 </script>
@@ -170,7 +195,7 @@ textarea {
 .chord-suggest {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.75rem;
   flex-wrap: wrap;
 }
 
@@ -182,6 +207,11 @@ textarea {
   padding: 0.6rem 1.1rem;
   font-size: 0.9rem;
   font-weight: 600;
+}
+
+.btn-lyrics {
+  background: var(--accent);
+  color: #fff;
 }
 
 .btn-suggest:disabled {
