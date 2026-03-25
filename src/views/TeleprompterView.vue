@@ -1,9 +1,9 @@
 <template>
   <div class="tp-root" :style="{ fontSize: fontSize + 'px' }">
 
-    <!-- Tap zones (invisible, full height) -->
-    <div class="tap-zone tap-left" @click="scrollBack"></div>
-    <div class="tap-zone tap-right" @click="scrollForward"></div>
+    <!-- Tap zones (invisible, full height) — hidden when chord diagrams showing -->
+    <div class="tap-zone tap-left" :class="{ disabled: showChordDiagrams }" @click="scrollBack"></div>
+    <div class="tap-zone tap-right" :class="{ disabled: showChordDiagrams }" @click="scrollForward"></div>
 
     <!-- Song content -->
     <div ref="contentEl" class="tp-content">
@@ -228,6 +228,9 @@ onUnmounted(() => {
   width: 30%;
   z-index: 10;
 }
+.tap-zone.disabled {
+  pointer-events: none;
+}
 .tap-left  { left: 0; }
 .tap-right { right: 0; }
 
@@ -265,8 +268,6 @@ onUnmounted(() => {
   border-radius: 12px;
   padding: 1rem;
   margin-bottom: 1.5em;
-  position: relative;
-  z-index: 15;
 }
 
 .tp-capo-row {
