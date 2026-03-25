@@ -21,6 +21,20 @@ da da-da da   da da-da da  da-da-da
 
 Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
 
+const VALIDATE_PROMPT = (content) =>
+  `You are a guitar chord formatter. The user has pasted a tab and it has been auto-formatted into bracket chord notation. Review it and fix any issues.
+
+Rules:
+- Chord names must be in [brackets] (e.g. [G], [Cadd9], [D/F#])
+- Fix malformed brackets (e.g. "G]" → "[G]", "[G" → "[G]")
+- Fix obviously wrong chord names (e.g. [Gm7b5] is fine, [XYZ] is not a chord — remove it)
+- Keep all lyrics and content exactly as-is — only fix chord formatting
+- Do NOT add, remove, or reorder any lines
+- Return only the corrected text, no explanations
+
+Content to review:
+${content}`
+
 const SONGS_FILE = path.resolve(process.cwd(), 'songs.json')
 
 function readSongs() {
@@ -99,20 +113,35 @@ function apiMiddlewarePlugin(env) {
     name: 'api-middleware',
     configureServer(server) {
       server.middlewares.use('/api/chords', async (req, res) => {
-        const url = new URL(req.url, 'http://localhost')
-        const title = url.searchParams.get('title') || ''
-        const artist = url.searchParams.get('artist') || ''
-
         const send = (code, data) => {
           res.statusCode = code
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(data))
         }
 
-        if (!title) return send(400, { error: 'title is required' })
-
         const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
+
+        let prompt
+        if (req.method === 'POST') {
+          let body = ''
+          await new Promise((resolve, reject) => {
+            req.on('data', chunk => { body += chunk })
+            req.on('end', resolve)
+            req.on('error', reject)
+          })
+          let parsed
+          try { parsed = JSON.parse(body) } catch { return send(400, { error: 'Invalid JSON' }) }
+          const { content } = parsed || {}
+          if (!content) return send(400, { error: 'content is required' })
+          prompt = VALIDATE_PROMPT(content)
+        } else {
+          const url = new URL(req.url, 'http://localhost')
+          const title = url.searchParams.get('title') || ''
+          const artist = url.searchParams.get('artist') || ''
+          if (!title) return send(400, { error: 'title is required' })
+          prompt = CHORD_PROMPT(title, artist)
+        }
 
         try {
           const client = new OpenAI({ apiKey })
@@ -120,7 +149,7 @@ function apiMiddlewarePlugin(env) {
             model: 'o4-mini',
             max_completion_tokens: 4096,
             reasoning_effort: 'low',
-            messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
+            messages: [{ role: 'user', content: prompt }]
           })
           return send(200, { content: completion.choices[0]?.message?.content || '' })
         } catch (err) {
