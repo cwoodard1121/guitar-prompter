@@ -47,6 +47,7 @@
               v-for="(seg, j) in line.segments"
               :key="j"
               class="tp-chord"
+              :class="{ 'tp-chord-transition': j === line.segments.length - 1 }"
               :style="{ marginLeft: seg.offset + 'ch' }"
             >{{ seg.chord }}</span>
           </div>
@@ -355,6 +356,11 @@ onUnmounted(() => {
   font-weight: 700;
   font-family: 'Courier New', monospace;
   white-space: pre;
+}
+
+.tp-chord-transition {
+  opacity: 0.5;
+  margin-left: 1ch !important;
 }
 
 .tp-lyric-row {
