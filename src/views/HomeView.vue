@@ -55,7 +55,7 @@
             <span class="song-artist">{{ song.artist }}</span>
           </div>
           <div class="song-actions">
-            <RouterLink :to="`/song/${song.id}/play`" class="btn btn-play">▶ Play</RouterLink>
+            <RouterLink :to="`/song/${song.id}/play`" class="btn btn-play">▶</RouterLink>
             <RouterLink :to="`/song/${song.id}/edit`" class="btn btn-edit">✏️</RouterLink>
             <button class="btn btn-delete" @click="confirmDelete(song)">🗑️</button>
           </div>
