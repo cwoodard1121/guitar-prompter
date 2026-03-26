@@ -100,6 +100,16 @@
           — match this version on YouTube for best sync
         </div>
 
+        <!-- Sync offset (only when LRC data present) -->
+        <div v-if="form.syncedLyrics" class="bpm-row">
+          <span class="field-label">Sync offset</span>
+          <button type="button" class="btn-tap" @click="adjustSyncOffset(-0.5)">−½s</button>
+          <span class="bpm-input offset-display">{{ syncOffsetDisplay }}</span>
+          <button type="button" class="btn-tap" @click="adjustSyncOffset(0.5)">+½s</button>
+          <button v-if="savedSyncOffset !== 0" type="button" class="btn-icon" @click="resetSyncOffset">✕</button>
+          <span class="hint" style="text-transform:none;letter-spacing:0">Saved for this song</span>
+        </div>
+
         <!-- BPM tap tempo -->
         <div class="bpm-row">
           <span class="field-label">BPM</span>
@@ -292,6 +302,26 @@ function parseChordResponse(data) {
   return lines.join('\n')
 }
 
+// ── Sync offset (localStorage, per song) ────────────────────────────────────
+const savedSyncOffset = ref(0)
+const syncOffsetDisplay = computed(() => {
+  const v = savedSyncOffset.value
+  if (v === 0) return '0s'
+  return (v > 0 ? '+' : '') + v.toFixed(1) + 's'
+})
+
+function syncOffsetKey() { return `gp-sync-offset-${route.params.id}` }
+
+function adjustSyncOffset(delta) {
+  savedSyncOffset.value = Math.round((savedSyncOffset.value + delta) * 10) / 10
+  localStorage.setItem(syncOffsetKey(), String(savedSyncOffset.value))
+}
+
+function resetSyncOffset() {
+  savedSyncOffset.value = 0
+  localStorage.removeItem(syncOffsetKey())
+}
+
 onMounted(() => {
   if (!isNew.value) {
     const song = store.getSong(route.params.id)
@@ -301,6 +331,8 @@ onMounted(() => {
         suppressNextParse = true
         youtubeUrlInput.value = `https://www.youtube.com/watch?v=${song.youtubeId}`
       }
+      const saved = parseFloat(localStorage.getItem(syncOffsetKey()) || '0')
+      savedSyncOffset.value = isNaN(saved) ? 0 : saved
     } else {
       router.replace('/')
     }
@@ -609,6 +641,14 @@ details[open] .collapsible-header::before { transform: rotate(90deg); }
   font-weight: 600;
   cursor: pointer;
 }
+.offset-display {
+  min-width: 3.5rem;
+  text-align: center;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--chord);
+}
+
 .bpm-input {
   width: 5rem;
   text-align: center;
