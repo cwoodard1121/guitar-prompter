@@ -453,6 +453,11 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  /* honour notch / home indicator on PWA */
+  padding-top: env(safe-area-inset-top);
+  padding-bottom: env(safe-area-inset-bottom);
+  padding-left: env(safe-area-inset-left);
+  padding-right: env(safe-area-inset-right);
 }
 
 .tap-zone {
@@ -462,48 +467,39 @@ onUnmounted(() => {
   width: 30%;
   z-index: 10;
 }
-.tap-zone.disabled {
-  pointer-events: none;
-}
+.tap-zone.disabled { pointer-events: none; }
 .tap-left  { left: 0; }
 .tap-right { right: 0; }
 
+/* ── Scrollable content ─────────────────────────────────────── */
 .tp-content {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 5rem 1.5rem 6rem;
+  padding: 5rem 1.25rem 8rem;
   scroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
 }
 .tp-content::-webkit-scrollbar { display: none; }
 
+/* ── Song header ────────────────────────────────────────────── */
 .tp-song-header {
   display: flex;
   flex-direction: column;
   margin-bottom: 1.5em;
   gap: 0.2em;
 }
+.tp-title  { font-size: 1.2em; font-weight: 700; color: #fff; }
+.tp-artist { font-size: 0.85em; color: #aaa; }
 
-.tp-title {
-  font-size: 1.2em;
-  font-weight: 700;
-  color: #fff;
-}
-
-.tp-artist {
-  font-size: 0.85em;
-  color: #aaa;
-}
-
+/* ── Chord diagrams ─────────────────────────────────────────── */
 .tp-chord-diagrams {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255,255,255,0.05);
   border-radius: 12px;
   padding: 1rem;
   margin-bottom: 1.5em;
 }
-
 .tp-capo-row {
   display: flex;
   align-items: center;
@@ -511,11 +507,10 @@ onUnmounted(() => {
   margin-bottom: 0.75rem;
   flex-wrap: wrap;
 }
-
 .tp-capo-btn {
-  background: rgba(255, 255, 255, 0.1);
-  color: rgba(255, 255, 255, 0.5);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: rgba(255,255,255,0.1);
+  color: rgba(255,255,255,0.5);
+  border: 1px solid rgba(255,255,255,0.2);
   border-radius: 8px;
   padding: 0.35rem 0.6rem;
   font-size: 0.7em;
@@ -523,65 +518,49 @@ onUnmounted(() => {
   cursor: pointer;
   transition: all 0.2s;
 }
-
 .tp-capo-btn.active {
   background: var(--chord, #f5c518);
   color: #000;
   border-color: var(--chord, #f5c518);
 }
-
 .tp-diagram-grid {
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: center;
 }
-
 .tp-diagram-item { flex: 0 0 auto; }
-
 .tp-diagram-wrap {
   display: flex;
   flex-direction: column;
   align-items: center;
 }
-
-.tp-sounds-as {
-  font-size: 0.65em;
-  color: #888;
-  margin-top: -0.1em;
-}
-
+.tp-sounds-as { font-size: 0.65em; color: #888; margin-top: -0.1em; }
 .tp-diagram-unknown {
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.25rem;
 }
-
 .tp-diagram-box {
   width: 80px;
   height: 100px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 2px dashed rgba(255, 255, 255, 0.2);
+  border: 2px dashed rgba(255,255,255,0.2);
   border-radius: 8px;
   color: #666;
   font-size: 1.5em;
 }
+.tp-diagram-name { font-weight: 700; font-size: 0.8em; color: #888; }
 
-.tp-diagram-name {
-  font-weight: 700;
-  font-size: 0.8em;
-  color: #888;
-}
-
+/* ── Lyric lines ────────────────────────────────────────────── */
 .tp-lines {
   display: flex;
   flex-direction: column;
   gap: 0.15em;
 }
-
 .tp-chord-lyric-row {
   display: flex;
   flex-wrap: wrap;
@@ -589,14 +568,12 @@ onUnmounted(() => {
   margin-bottom: 0.4em;
   gap: 0 0.3ch;
 }
-
 .tp-segment {
   display: inline-flex;
   flex-direction: column;
   white-space: pre;
   padding-right: 0.4ch;
 }
-
 .tp-chord-above {
   color: var(--chord, #f5c518);
   font-weight: 700;
@@ -605,18 +582,13 @@ onUnmounted(() => {
   min-height: 1.4em;
   letter-spacing: 0.02em;
 }
-
-.tp-chord-above.tp-chord-transition {
-  opacity: 0.4;
-}
-
+.tp-chord-above.tp-chord-transition { opacity: 0.4; }
 .tp-lyric-below {
   color: #fff;
   font-family: 'Courier New', monospace;
   line-height: 1.6;
   transition: color 0.35s ease;
 }
-
 .tp-chord-only-row {
   display: flex;
   flex-wrap: wrap;
@@ -626,11 +598,7 @@ onUnmounted(() => {
   font-family: 'Courier New', monospace;
   margin-bottom: 0.5em;
 }
-
-.tp-chord-solo {
-  white-space: pre;
-}
-
+.tp-chord-solo { white-space: pre; }
 .tp-lyric-row {
   line-height: 1.6;
   padding-bottom: 0.25em;
@@ -639,24 +607,25 @@ onUnmounted(() => {
   white-space: pre-wrap;
   transition: color 0.35s ease;
 }
-
 .tp-blank { height: 1.2em; }
 
+/* ── Controls bar ───────────────────────────────────────────── */
 .tp-controls {
   position: fixed;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   left: 0;
   right: 0;
   z-index: 20;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 1rem;
-  background: rgba(0, 0, 0, 0.85);
-  backdrop-filter: blur(6px);
+  flex-wrap: wrap;           /* allow second row on tiny screens */
+  gap: 0.4rem;
+  padding: 0.55rem 0.75rem;
+  background: rgba(0,0,0,0.88);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
   transition: transform 0.25s ease;
 }
-
 .tp-controls.hidden { transform: translateY(-110%); }
 
 .ctrl-btn {
@@ -664,47 +633,43 @@ onUnmounted(() => {
   border: none;
   border-radius: 8px;
   color: #fff;
-  font-size: 1.1rem;
-  padding: 0.5rem 0.8rem;
-  min-width: 2.5rem;
+  font-size: clamp(0.85rem, 3.5vw, 1.1rem);
+  padding: 0.45rem 0.65rem;
+  min-width: 2.2rem;
   text-align: center;
+  flex-shrink: 0;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
+.chord-toggle-btn.active { background: var(--chord, #f5c518); color: #000; }
+.sync-toggle-btn.active  { background: var(--chord, #f5c518); color: #000; }
 
-.chord-toggle-btn.active {
-  background: var(--chord, #f5c518);
-  color: #000;
-}
-
-.catchup-btn {
-  background: rgba(255, 200, 0, 0.2);
-  font-size: 1.1rem;
-}
-
-.catchup-btn:active {
-  background: rgba(255, 200, 0, 0.5);
-}
+.catchup-btn { background: rgba(255,200,0,0.2); }
+.catchup-btn:active { background: rgba(255,200,0,0.5); }
 
 .speed-val {
-  min-width: 2.8rem;
-  font-size: 0.9rem;
+  min-width: 2.4rem;
+  font-size: clamp(0.75rem, 3vw, 0.9rem);
   pointer-events: none;
 }
-
 .play-btn {
   margin-left: auto;
   background: var(--accent, #e94560);
-  font-size: 1.3rem;
-  padding: 0.5rem 1rem;
+  font-size: clamp(1rem, 4vw, 1.3rem);
+  padding: 0.45rem 0.85rem;
+}
+.ctrl-group { display: flex; gap: 0.2rem; }
+.nudge-btn {
+  font-size: clamp(0.65rem, 2.8vw, 0.8rem);
+  padding: 0.45rem 0.45rem;
+  min-width: 0;
+  opacity: 0.85;
 }
 
-.ctrl-group {
-  display: flex;
-  gap: 0.25rem;
-}
-
+/* ── Show/hide toggle ───────────────────────────────────────── */
 .ctrl-toggle {
   position: fixed;
-  top: 0;
+  top: env(safe-area-inset-top, 0px);
   right: 0.75rem;
   z-index: 25;
   background: rgba(0,0,0,0.6);
@@ -714,58 +679,39 @@ onUnmounted(() => {
   font-size: 1rem;
   cursor: pointer;
   user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
-.sync-toggle-btn.active {
-  background: var(--chord, #f5c518);
-  color: #000;
-}
-
+/* ── Sync highlights ────────────────────────────────────────── */
 .tp-line-active .tp-lyric-below,
-.tp-line-active.tp-lyric-row {
-  color: var(--chord, #f5c518);
-}
-
+.tp-line-active.tp-lyric-row { color: var(--chord, #f5c518); }
 .tp-line-next .tp-lyric-below,
-.tp-line-next.tp-lyric-row {
-  color: rgba(245, 197, 24, 0.4);
-}
+.tp-line-next.tp-lyric-row   { color: rgba(245,197,24,0.4); }
+.tp-line-tappable { cursor: pointer; }
 
-.tp-line-tappable {
-  cursor: pointer;
-}
-
-.nudge-btn {
-  font-size: 0.75rem;
-  padding: 0.5rem 0.5rem;
-  min-width: 0;
-  opacity: 0.8;
-}
-
+/* ── YouTube overlay ────────────────────────────────────────── */
 .yt-overlay {
   position: fixed;
-  bottom: 4.5rem;
-  right: 0.75rem;
+  /* sit above the bottom safe area */
+  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  right: calc(0.75rem + env(safe-area-inset-right, 0px));
   z-index: 20;
   border-radius: 10px;
   overflow: hidden;
   background: #111;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.7);
+  box-shadow: 0 4px 24px rgba(0,0,0,0.7);
+  /* responsive width: 40% of viewport width, capped 160–260px */
+  width: clamp(160px, 40vw, 260px);
 }
-
 .yt-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 0.3rem 0.5rem;
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255,255,255,0.06);
 }
-
-.yt-label {
-  font-size: 0.7rem;
-  color: #888;
-}
-
+.yt-label { font-size: 0.7rem; color: #888; }
 .yt-toggle-btn {
   background: none;
   border: none;
@@ -773,15 +719,18 @@ onUnmounted(() => {
   font-size: 0.85rem;
   padding: 0 0.2rem;
   cursor: pointer;
+  touch-action: manipulation;
 }
-
 .yt-player-el {
-  width: 213px;
-  height: 120px;
+  width: 100%;
+  aspect-ratio: 16 / 9;
   display: block;
 }
+.yt-hidden .yt-player-el { display: none; }
 
-.yt-hidden .yt-player-el {
-  display: none;
+/* ── Landscape phone: smaller YT overlay so lyrics still visible */
+@media (max-height: 500px) {
+  .yt-overlay { width: clamp(130px, 28vw, 200px); }
+  .tp-content { padding-top: 4rem; }
 }
 </style>
