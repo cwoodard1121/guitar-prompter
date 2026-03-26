@@ -175,15 +175,20 @@ input {
   font-size: 1rem;
   outline: none;
 }
-input:focus { border-color: var(--accent); }
+input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(233,69,96,0.15);
+  outline: none;
+}
 
 .section-label {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
+  font-weight: 600;
   color: var(--text-muted);
-  padding-bottom: 0.25rem;
-  border-bottom: 1px solid #222;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .empty-msg {
@@ -201,6 +206,7 @@ input:focus { border-color: var(--accent); }
 }
 .setlist-song-row, .library-row {
   background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   padding: 0.75rem 1rem;
   display: flex;
@@ -208,7 +214,7 @@ input:focus { border-color: var(--accent); }
   gap: 0.75rem;
 }
 .library-row { cursor: pointer; }
-.library-row:active { opacity: 0.7; }
+.library-row:active { opacity: 0.7; transform: scale(0.99); }
 
 .song-pos {
   font-size: 0.85rem;
@@ -244,16 +250,22 @@ input:focus { border-color: var(--accent); }
   border-radius: 6px;
   color: var(--text);
   font-size: 0.9rem;
-  padding: 0.3rem 0.5rem;
+  padding: 0.4rem 0.6rem;
+  min-width: 2rem;
+  text-align: center;
 }
-.btn-icon:disabled { opacity: 0.25; }
-.btn-remove { color: #e94560; }
+.btn-icon:disabled { opacity: 0.2; }
+.btn-icon:active:not(:disabled) { opacity: 0.6; }
+.btn-remove { color: #e94560; background: rgba(233,69,96,0.1); }
 
 .btn-add-song {
-  font-size: 1.2rem;
-  color: var(--accent);
+  font-size: 0.85rem;
   font-weight: 700;
-  padding: 0 0.25rem;
+  background: rgba(233,69,96,0.12);
+  color: var(--accent);
+  border-radius: 6px;
+  padding: 0.3rem 0.65rem;
+  flex-shrink: 0;
 }
 
 .form-actions {
