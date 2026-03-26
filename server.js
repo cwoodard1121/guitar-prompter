@@ -24,7 +24,8 @@ function rowToSong(row) {
     content: row.content ?? '',
     syncedLyrics: row.synced_lyrics ?? null,
     youtubeId: row.youtube_id ?? null,
-    bpm: row.bpm ?? null
+    bpm: row.bpm ?? null,
+    syncOffset: row.sync_offset ?? 0
   }
 }
 
@@ -35,7 +36,8 @@ function songToRow(song) {
     content: song.content ?? '',
     synced_lyrics: song.syncedLyrics ?? null,
     youtube_id: song.youtubeId ?? null,
-    bpm: song.bpm ?? null
+    bpm: song.bpm ?? null,
+    sync_offset: song.syncOffset ?? 0
   }
 }
 

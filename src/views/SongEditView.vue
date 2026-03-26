@@ -106,7 +106,7 @@
           <button type="button" class="btn-tap" @click="adjustSyncOffset(-0.5)">−½s</button>
           <span class="bpm-input offset-display">{{ syncOffsetDisplay }}</span>
           <button type="button" class="btn-tap" @click="adjustSyncOffset(0.5)">+½s</button>
-          <button v-if="savedSyncOffset !== 0" type="button" class="btn-icon" @click="resetSyncOffset">✕</button>
+          <button v-if="form.syncOffset !== 0" type="button" class="btn-icon" @click="resetSyncOffset">✕</button>
           <span class="hint" style="text-transform:none;letter-spacing:0">Saved for this song</span>
         </div>
 
@@ -153,7 +153,7 @@ const store = useSongsStore()
 
 const isNew = computed(() => route.params.id === undefined)
 
-const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null, bpm: null })
+const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null, bpm: null, syncOffset: 0 })
 const pasteText = ref('')
 const checking = ref(false)
 const checkError = ref('')
@@ -302,37 +302,30 @@ function parseChordResponse(data) {
   return lines.join('\n')
 }
 
-// ── Sync offset (localStorage, per song) ────────────────────────────────────
-const savedSyncOffset = ref(0)
+// ── Sync offset (stored in DB as part of song) ──────────────────────────────
 const syncOffsetDisplay = computed(() => {
-  const v = savedSyncOffset.value
+  const v = form.value.syncOffset ?? 0
   if (v === 0) return '0s'
   return (v > 0 ? '+' : '') + v.toFixed(1) + 's'
 })
 
-function syncOffsetKey() { return `gp-sync-offset-${route.params.id}` }
-
 function adjustSyncOffset(delta) {
-  savedSyncOffset.value = Math.round((savedSyncOffset.value + delta) * 10) / 10
-  localStorage.setItem(syncOffsetKey(), String(savedSyncOffset.value))
+  form.value.syncOffset = Math.round(((form.value.syncOffset ?? 0) + delta) * 10) / 10
 }
 
 function resetSyncOffset() {
-  savedSyncOffset.value = 0
-  localStorage.removeItem(syncOffsetKey())
+  form.value.syncOffset = 0
 }
 
 onMounted(() => {
   if (!isNew.value) {
     const song = store.getSong(route.params.id)
     if (song) {
-      form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null, bpm: song.bpm ?? null }
+      form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null, bpm: song.bpm ?? null, syncOffset: song.syncOffset ?? 0 }
       if (song.youtubeId) {
         suppressNextParse = true
         youtubeUrlInput.value = `https://www.youtube.com/watch?v=${song.youtubeId}`
       }
-      const saved = parseFloat(localStorage.getItem(syncOffsetKey()) || '0')
-      savedSyncOffset.value = isNaN(saved) ? 0 : saved
     } else {
       router.replace('/')
     }

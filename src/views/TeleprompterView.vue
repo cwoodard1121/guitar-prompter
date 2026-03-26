@@ -56,6 +56,14 @@
         </div>
       </div>
 
+      <!-- YouTube embed (inline, between header and lyrics) -->
+      <div v-if="hasYoutube && syncEnabled" class="yt-overlay" :class="{ 'yt-hidden': !showYT }">
+        <button class="yt-toggle-btn" @click="showYT = !showYT">
+          {{ showYT ? '▾ YT' : '▸ YT' }}
+        </button>
+        <div ref="ytPlayerEl" class="yt-player-el"></div>
+      </div>
+
       <div class="tp-lines">
         <template v-for="(line, i) in parsedLines" :key="i">
           <div
@@ -96,14 +104,6 @@
           <div v-else class="tp-blank"></div>
         </template>
       </div>
-    </div>
-
-    <!-- YouTube embed overlay -->
-    <div v-if="hasYoutube && syncEnabled" class="yt-overlay" :class="{ 'yt-hidden': !showYT }">
-      <button class="yt-toggle-btn" @click="showYT = !showYT">
-        {{ showYT ? '▾ YT' : '▸ YT' }}
-      </button>
-      <div ref="ytPlayerEl" class="yt-player-el"></div>
     </div>
 
     <!-- Controls overlay (top) -->
@@ -221,13 +221,8 @@ const playStartTime = ref(null)
 const elapsed = ref(0)
 const syncOffset = ref(0)   // seconds — positive = lyrics shift earlier, negative = later
 
-function syncOffsetKey() { return `gp-sync-offset-${route.params.id}` }
 function loadSavedOffset() {
-  const saved = parseFloat(localStorage.getItem(syncOffsetKey()) || '0')
-  syncOffset.value = isNaN(saved) ? 0 : saved
-}
-function saveSyncOffset() {
-  localStorage.setItem(syncOffsetKey(), String(syncOffset.value))
+  syncOffset.value = song.value?.syncOffset ?? 0
 }
 
 watch(song, (s) => {
@@ -285,7 +280,7 @@ watch(syncEnabled, async (enabled) => {
   } else if (!enabled && ytPlayer) {
     ytPlayer.destroy(); ytPlayer = null; ytReady.value = false
   }
-})
+}, { immediate: true })
 
 // --- Chord display ---
 const chordNames = computed(() => extractChordNames(displayContent.value))
@@ -548,8 +543,9 @@ function toggleSync() {
 }
 
 function nudgeOffset(delta) {
-  syncOffset.value = Math.round((syncOffset.value + delta) * 10) / 10
-  saveSyncOffset()
+  const newVal = Math.round((syncOffset.value + delta) * 10) / 10
+  syncOffset.value = newVal
+  if (song.value) store.updateSong(song.value.id, { ...song.value, syncOffset: newVal })
 }
 
 const CATCHUP_JUMP = 800
@@ -931,17 +927,13 @@ onUnmounted(() => {
 .tp-line-next.tp-lyric-row   { color: rgba(245,197,24,0.4); }
 .tp-line-tappable { cursor: pointer; }
 
-/* ── YouTube overlay ────────────────────────────────────────── */
+/* ── YouTube inline block ───────────────────────────────────── */
 .yt-overlay {
-  position: fixed;
-  bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
-  right: calc(0.75rem + env(safe-area-inset-right, 0px));
-  z-index: 20;
   border-radius: 8px;
   overflow: hidden;
   background: #111;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
   width: 130px;
+  margin: 0.25rem 0 0.5rem;
 }
 .yt-toggle-btn {
   display: block;
