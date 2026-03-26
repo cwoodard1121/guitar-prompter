@@ -6,117 +6,122 @@
     </header>
 
     <form class="edit-form" @submit.prevent="save">
-      <label>
-        Title
-        <input v-model="form.title" type="text" placeholder="Song title" required />
-      </label>
 
-      <label>
-        Artist
-        <input v-model="form.artist" type="text" placeholder="Artist name" />
-      </label>
+      <!-- ── YouTube URL (top — triggers auto-fill) ── -->
+      <div class="field-group">
+        <div class="field-label">YouTube Link</div>
+        <div class="yt-input-row">
+          <input v-model="youtubeUrlInput" type="text" placeholder="https://youtube.com/watch?v=..." />
+          <span v-if="form.youtubeId && !parseStatus" class="badge badge-ok">✓</span>
+          <button v-if="form.youtubeId" type="button" class="btn-icon" @click="youtubeUrlInput = ''; form.youtubeId = null">✕</button>
+        </div>
+        <div v-if="parseStatus === 'loading'" class="status-row">
+          <span class="status-muted">Identifying song…</span>
+        </div>
+        <div v-else-if="parseStatus === 'done'" class="status-row">
+          <span class="badge badge-ok">✓ Auto-filled from YouTube</span>
+        </div>
+      </div>
 
-      <label class="label-paste">
-        Paste from tab site
-        <span class="hint">Paste chords/lyrics from Ultimate Guitar or similar — we'll format it</span>
-        <textarea
-          v-model="pasteText"
-          placeholder="Paste tab text here...
+      <!-- ── Title + Artist ── -->
+      <div class="two-col">
+        <div class="field-group">
+          <div class="field-label">Title</div>
+          <input v-model="form.title" type="text" placeholder="Song title" required />
+        </div>
+        <div class="field-group">
+          <div class="field-label">Artist</div>
+          <input v-model="form.artist" type="text" placeholder="Artist name" />
+        </div>
+      </div>
 
-Example:
-               E
-Now, if you're feeling kinda low
-D               A        E
-Future's coming much too slow"
-          rows="10"
-          spellcheck="false"
-        ></textarea>
-        <button type="button" class="btn-format" :disabled="!pasteText.trim()" @click="formatPaste">
-          Format &amp; import
-        </button>
-      </label>
-
-      <label class="label-content">
-        Chords &amp; Lyrics
-        <span class="hint">Edit your formatted chord chart — use [brackets] for chords</span>
+      <!-- ── Chords & Lyrics (main area) ── -->
+      <div class="field-group field-grow">
+        <div class="field-label-row">
+          <div class="field-label">Chords &amp; Lyrics</div>
+          <button type="button" class="btn-ai" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
+            {{ loadingLyrics ? 'Fetching…' : '🤖 AI fill' }}
+          </button>
+        </div>
+        <span class="hint">Use [brackets] for chords above lyric lines</span>
         <textarea
           v-model="form.content"
           placeholder="[G]Here comes the [C]sun..."
-          rows="16"
+          rows="14"
           spellcheck="false"
         ></textarea>
-      </label>
+        <div v-if="loadingLyrics" class="progress-bar-track">
+          <div class="progress-bar-fill"></div>
+          <div class="progress-label">{{ loadingPhase }}</div>
+        </div>
+        <span v-if="chordError" class="status-err">{{ chordError }}</span>
+      </div>
 
-      <div class="lrc-row">
-        <button
-          type="button"
-          class="btn-suggest btn-lrc"
-          :disabled="lrcStatus === 'loading' || !form.title || !form.artist"
-          @click="fetchLrcSync"
-        >
-          {{ lrcStatus === 'loading' ? 'Fetching…' : '⏱ Fetch Sync' }}
-        </button>
-        <span v-if="lrcStatus === 'found'" class="lrc-ok">✓ Synced lyrics found</span>
-        <span v-if="lrcMeta" class="lrc-meta">
+      <!-- ── Paste from tab (collapsible) ── -->
+      <details class="collapsible">
+        <summary class="collapsible-header">Paste from tab site</summary>
+        <div class="collapsible-body">
+          <span class="hint">Paste chords/lyrics from Ultimate Guitar or similar — we'll format it</span>
+          <textarea
+            v-model="pasteText"
+            placeholder="Paste tab text here..."
+            rows="8"
+            spellcheck="false"
+          ></textarea>
+          <button type="button" class="btn-secondary" :disabled="!pasteText.trim()" @click="formatPaste">
+            Format &amp; import
+          </button>
+        </div>
+      </details>
+
+      <!-- ── Sync section ── -->
+      <div class="sync-section">
+        <div class="sync-row">
+          <!-- LRC Sync -->
+          <button
+            type="button"
+            class="btn-lrc"
+            :disabled="lrcStatus === 'loading' || !form.title || !form.artist"
+            @click="fetchLrcSync"
+          >{{ lrcStatus === 'loading' ? 'Fetching…' : '⏱ Fetch Sync' }}</button>
+          <span v-if="lrcStatus === 'found'" class="badge badge-ok">✓ Synced</span>
+          <span v-else-if="lrcStatus === 'not_found'" class="status-warn">No sync available</span>
+          <span v-else-if="lrcStatus === 'error'" class="status-err">Fetch failed</span>
+          <span v-else-if="form.syncedLyrics" class="badge badge-ok">✓ Sync stored</span>
+          <button v-if="form.syncedLyrics" type="button" class="btn-icon" @click="form.syncedLyrics = null; lrcStatus = 'idle'">✕</button>
+        </div>
+        <div v-if="lrcMeta" class="lrc-meta">
           {{ lrcMeta.albumName ? `"${lrcMeta.albumName}"` : '' }}
           {{ lrcMeta.duration ? `· ${Math.floor(lrcMeta.duration / 60)}:${String(lrcMeta.duration % 60).padStart(2,'0')}` : '' }}
-          — find this exact version on YouTube
-        </span>
-        <span v-else-if="lrcStatus === 'not_found'" class="lrc-warn">No synced lyrics available</span>
-        <span v-else-if="lrcStatus === 'error'" class="lrc-err">Fetch failed</span>
-        <span v-else-if="form.syncedLyrics" class="lrc-ok">✓ Sync data stored</span>
-        <button
-          v-if="form.syncedLyrics"
-          type="button"
-          class="btn-lrc-clear"
-          @click="form.syncedLyrics = null; lrcStatus = 'idle'"
-        >✕</button>
-      </div>
-
-      <label>
-        YouTube
-        <span class="hint">Paste a YouTube link — video will play alongside the teleprompter</span>
-        <div class="yt-input-row">
-          <input v-model="youtubeUrlInput" type="text" placeholder="https://youtube.com/watch?v=..." />
-          <span v-if="form.youtubeId" class="lrc-ok">✓</span>
-          <button v-if="form.youtubeId" type="button" class="btn-lrc-clear" @click="youtubeUrlInput = ''; form.youtubeId = null">✕</button>
+          — match this version on YouTube for best sync
         </div>
-      </label>
 
-      <!-- BPM tap tempo -->
-      <div class="bpm-row">
-        <span class="bpm-label">BPM</span>
-        <button type="button" class="btn-tap" @click="tap">Tap</button>
-        <input
-          v-model.number="form.bpm"
-          type="number"
-          class="bpm-input"
-          min="20"
-          max="300"
-          placeholder="—"
-        />
-        <button v-if="form.bpm" type="button" class="btn-lrc-clear" @click="form.bpm = null">✕</button>
-        <span class="hint" style="text-transform:none;letter-spacing:0">Used when no sync data</span>
+        <!-- BPM tap tempo -->
+        <div class="bpm-row">
+          <span class="field-label">BPM</span>
+          <button type="button" class="btn-tap" @click="tap">Tap</button>
+          <input
+            v-model.number="form.bpm"
+            type="number"
+            class="bpm-input"
+            min="20"
+            max="300"
+            placeholder="—"
+          />
+          <button v-if="form.bpm" type="button" class="btn-icon" @click="form.bpm = null">✕</button>
+          <span class="hint" style="text-transform:none;letter-spacing:0">Used when no sync data</span>
+        </div>
       </div>
 
-      <div class="chord-suggest">
-        <button type="button" class="btn-suggest btn-lyrics" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
-          {{ loadingLyrics ? 'Researching…' : '🤖 AI fetch (beta)' }}
-        </button>
-        <span v-if="chordError" class="chord-error">{{ chordError }}</span>
-      </div>
-
-      <div v-if="loadingLyrics" class="progress-bar-track">
-        <div class="progress-bar-fill"></div>
-        <div class="progress-label">{{ loadingPhase }}</div>
-      </div>
-
+      <!-- ── Preview ── -->
       <ChordChart :content="form.content" />
 
+      <!-- ── Actions ── -->
       <div class="form-actions">
-        <button type="submit" class="btn-save">Save Song</button>
+        <button type="submit" class="btn-save">Save</button>
         <RouterLink v-if="!isNew" :to="`/song/${route.params.id}/play`" class="btn-play">▶ Play</RouterLink>
       </div>
+
     </form>
   </div>
 </template>
@@ -140,39 +145,55 @@ const loadingLyrics = ref(false)
 const chordError = ref('')
 const loadingPhase = ref('')
 const lrcStatus = ref('idle') // 'idle' | 'loading' | 'found' | 'not_found' | 'error'
-const lrcMeta = ref(null) // { albumName, duration } from LRCLIB — helps find the right YT video
+const lrcMeta = ref(null)
 const youtubeUrlInput = ref('')
+const parseStatus = ref('') // '' | 'loading' | 'done'
+let suppressNextParse = false // skip auto-fill when pre-populating on edit
 
 watch(youtubeUrlInput, async (url) => {
+  if (suppressNextParse) { suppressNextParse = false; return }
   const m = url.match(/(?:youtu\.be\/|[?&]v=)([\w-]{11})/)
   const videoId = m ? m[1] : null
   form.value.youtubeId = videoId
-  if (!videoId) return
+  if (!videoId) { parseStatus.value = ''; return }
 
-  // Auto-fill title/artist from YouTube video title if fields are empty
+  parseStatus.value = 'loading'
   try {
+    // Step 1: oEmbed (no API key, fast)
     const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
-    if (!res.ok) return
-    const { title } = await res.json()
-    const parsed = parseYouTubeTitle(title)
-    if (!form.value.title) form.value.title = parsed.title
-    if (!form.value.artist) form.value.artist = parsed.artist
-  } catch { /* silent */ }
+    if (!res.ok) { parseStatus.value = ''; return }
+    const { title: rawTitle } = await res.json()
+
+    // Step 2: heuristic parse first (instant)
+    const heuristic = parseYouTubeTitle(rawTitle)
+    if (!form.value.title) form.value.title = heuristic.title
+    if (!form.value.artist) form.value.artist = heuristic.artist
+
+    // Step 3: AI parse as fallback/improvement
+    try {
+      const aiRes = await fetch(`/api/parse-title?raw=${encodeURIComponent(rawTitle)}`)
+      if (aiRes.ok) {
+        const ai = await aiRes.json()
+        if (ai.title) form.value.title = ai.title
+        if (ai.artist) form.value.artist = ai.artist
+      }
+    } catch { /* keep heuristic result */ }
+
+    parseStatus.value = 'done'
+  } catch {
+    parseStatus.value = ''
+  }
 })
 
 function parseYouTubeTitle(raw) {
-  // Strip common suffixes: (Official Video), (Lyrics), [HD], etc.
   const clean = raw
     .replace(/\s*[\[(](?:official\s*(?:video|music\s*video|audio|lyric\s*video)?|lyrics?|hd|4k|live|audio|visualizer)[^\])]*/gi, '')
-    .replace(/\s*\|.*$/, '')   // strip " | Artist Name" suffix
+    .replace(/\s*\|.*$/, '')
     .trim()
-
-  // Most music titles: "Artist - Song" or "Song - Artist"
   const parts = clean.split(/\s+[-–—]\s+/)
   if (parts.length >= 2) {
     return { artist: parts[0].trim(), title: parts.slice(1).join(' - ').trim() }
   }
-  // Fallback: use full title as song name
   return { artist: '', title: clean }
 }
 
@@ -204,7 +225,6 @@ const LOADING_PHASES = [
   'Verifying accuracy...',
   'Building chord chart...',
 ]
-
 let loadingInterval = null
 
 function startLoadingPhases() {
@@ -222,53 +242,25 @@ function stopLoadingPhases() {
   loadingPhase.value = ''
 }
 
-// Convert AI JSON response to bracket format for the textarea/teleprompter
-// Input: { sections: [{ name, lines: [{ chords: ["D","A"], text: "..." }] }] }
-// Output: "[D]             [A]\nda da da da     da da da da\n..."
 function parseChordResponse(data) {
-  // If it's already a plain string (old format), return as-is
   if (typeof data.content === 'string' && !data.content.trim().startsWith('{')) {
     return data.content
   }
-
-  // Try to parse as JSON
   let json
   try {
-    // content might be a JSON string
     json = typeof data.content === 'string' ? JSON.parse(data.content) : data.content
   } catch {
-    // Not JSON, return as-is
     return data.content || ''
   }
-
-  if (!json.sections || !Array.isArray(json.sections)) {
-    return data.content || ''
-  }
-
+  if (!json.sections || !Array.isArray(json.sections)) return data.content || ''
   const lines = []
-
-  // Add capo info if present
-  if (json.capo && json.capo > 0) {
-    lines.push(`[capo ${json.capo}]`)
-    lines.push('')
-  }
-
-  // Add source attribution if present
-  if (json.source) {
-    lines.push(`// Source: ${json.source}`)
-    lines.push('')
-  }
-
+  if (json.capo && json.capo > 0) { lines.push(`[capo ${json.capo}]`); lines.push('') }
+  if (json.source) { lines.push(`// Source: ${json.source}`); lines.push('') }
   for (const section of json.sections) {
-    if (section.name) lines.push('')  // blank line before section
+    if (section.name) lines.push('')
     for (const line of section.lines || []) {
-      if (line.chords && line.chords.length > 0) {
-        const chordLine = line.chords.map(c => `[${c}]`).join('  ')
-        lines.push(chordLine)
-      }
-      if (line.text) {
-        lines.push(line.text)
-      }
+      if (line.chords?.length > 0) lines.push(line.chords.map(c => `[${c}]`).join('  '))
+      if (line.text) lines.push(line.text)
     }
   }
   return lines.join('\n')
@@ -279,9 +271,13 @@ onMounted(() => {
     const song = store.getSong(route.params.id)
     if (song) {
       form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null, bpm: song.bpm ?? null }
-      if (song.youtubeId) youtubeUrlInput.value = `https://www.youtube.com/watch?v=${song.youtubeId}`
+      if (song.youtubeId) {
+        suppressNextParse = true
+        youtubeUrlInput.value = `https://www.youtube.com/watch?v=${song.youtubeId}`
+      }
+    } else {
+      router.replace('/')
     }
-    else router.replace('/')
   }
 })
 
@@ -289,22 +285,14 @@ async function fetchLrcSync() {
   if (!form.value.title || !form.value.artist) return
   lrcStatus.value = 'loading'
   try {
-    const params = new URLSearchParams({
-      artist_name: form.value.artist,
-      track_name: form.value.title
-    })
-    const res = await fetch(`https://lrclib.net/api/get?${params}`, {
-      headers: { 'Lrclib-Client': 'guitar-prompter/1.0' }
-    })
+    const params = new URLSearchParams({ artist_name: form.value.artist, track_name: form.value.title })
+    const res = await fetch(`https://lrclib.net/api/get?${params}`, { headers: { 'Lrclib-Client': 'guitar-prompter/1.0' } })
     if (!res.ok) throw new Error(res.status)
     const data = await res.json()
     if (data.syncedLyrics) {
       form.value.syncedLyrics = data.syncedLyrics
       lrcStatus.value = 'found'
-      lrcMeta.value = {
-        albumName: data.albumName || null,
-        duration: data.duration || null
-      }
+      lrcMeta.value = { albumName: data.albumName || null, duration: data.duration || null }
     } else {
       lrcStatus.value = 'not_found'
     }
@@ -322,7 +310,7 @@ async function save() {
     }
     router.push('/')
   } catch (e) {
-    chordError.value = 'Failed to save song: ' + (e.message || 'Unknown error')
+    chordError.value = 'Failed to save: ' + (e.message || 'Unknown error')
   }
 }
 
@@ -370,34 +358,49 @@ async function suggestWithLyrics() {
   padding: 0.4rem 0;
 }
 
-.edit-header h2 {
-  font-size: 1.2rem;
-}
+.edit-header h2 { font-size: 1.2rem; }
 
 .edit-form {
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 1.1rem;
   flex: 1;
 }
 
-label {
+/* Field groups */
+.field-group {
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
-  font-size: 0.85rem;
+}
+
+.field-grow { flex: 1; }
+
+.field-label {
+  font-size: 0.8rem;
   color: var(--text-muted);
   text-transform: uppercase;
-  letter-spacing: 0.05em;
+  letter-spacing: 0.06em;
+}
+
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
 }
 
 .hint {
   font-size: 0.75rem;
   color: var(--text-muted);
-  text-transform: none;
-  letter-spacing: 0;
 }
 
+/* Inputs */
 input, textarea {
   background: var(--bg-card);
   border: 1px solid #333;
@@ -407,12 +410,10 @@ input, textarea {
   font-size: 1rem;
   outline: none;
   transition: border-color 0.2s;
+  width: 100%;
+  box-sizing: border-box;
 }
-
-input:focus, textarea:focus {
-  border-color: var(--accent);
-}
-
+input:focus, textarea:focus { border-color: var(--accent); }
 textarea {
   resize: vertical;
   line-height: 1.6;
@@ -420,134 +421,128 @@ textarea {
   font-size: 0.95rem;
 }
 
-.label-content {
-  flex: 1;
-}
-
-.chord-suggest {
+/* YouTube row */
+.yt-input-row {
   display: flex;
   align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
+  gap: 0.5rem;
 }
+.yt-input-row input { flex: 1; }
 
-.btn-suggest {
-  background: var(--accent2);
-  color: var(--text);
+/* Badges / status */
+.badge {
+  font-size: 0.78rem;
+  padding: 0.25rem 0.55rem;
+  border-radius: 99px;
+  white-space: nowrap;
+}
+.badge-ok { background: rgba(76,175,80,0.15); color: #4caf50; }
+.status-row { display: flex; align-items: center; gap: 0.5rem; }
+.status-muted { font-size: 0.8rem; color: var(--text-muted); }
+.status-warn { font-size: 0.8rem; color: #ff9800; }
+.status-err { font-size: 0.8rem; color: var(--accent); }
+
+/* Icon button (✕) */
+.btn-icon {
+  background: none;
   border: none;
-  border-radius: var(--radius);
-  padding: 0.6rem 1.1rem;
+  color: var(--text-muted);
   font-size: 0.9rem;
-  font-weight: 600;
+  padding: 0.2rem 0.4rem;
+  flex-shrink: 0;
+  cursor: pointer;
 }
 
-.btn-lyrics {
-  background: var(--accent);
-  color: #fff;
-}
-
-.btn-suggest:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.chord-error {
-  color: var(--accent);
-  font-size: 0.85rem;
-}
-
-.form-actions {
-  display: flex;
-  gap: 0.75rem;
-  padding-bottom: 1rem;
-}
-
-.btn-save {
-  flex: 1;
+/* AI fill button (inline in label row) */
+.btn-ai {
   background: var(--accent);
   color: #fff;
   border: none;
   border-radius: var(--radius);
-  padding: 0.85rem;
-  font-size: 1rem;
-  font-weight: 700;
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
 }
+.btn-ai:disabled { opacity: 0.5; cursor: not-allowed; }
 
-.btn-play {
-  background: var(--accent2);
-  color: var(--text);
-  border-radius: var(--radius);
-  padding: 0.85rem 1.2rem;
-  font-weight: 700;
-  font-size: 1rem;
-}
-
+/* Progress bar */
 .progress-bar-track {
   background: var(--bg);
   border-radius: 99px;
-  height: 6px;
+  height: 5px;
   overflow: hidden;
   position: relative;
+  margin-top: 0.25rem;
 }
-
 .progress-bar-fill {
-  position: absolute;
-  top: 0;
-  left: 0;
-  height: 100%;
-  width: 40%;
-  background: var(--accent);
-  border-radius: 99px;
+  position: absolute; top: 0; left: 0; height: 100%; width: 40%;
+  background: var(--accent); border-radius: 99px;
   animation: progress-slide 1.8s ease-in-out infinite;
 }
-
 @keyframes progress-slide {
   0%   { left: -40%; }
   100% { left: 100%; }
 }
-
 .progress-label {
-  margin-top: 0.4rem;
+  margin-top: 0.35rem;
   font-size: 0.75rem;
   color: var(--text-muted);
   text-align: center;
-  animation: progress-fade 9s ease-in-out infinite;
 }
 
-@keyframes progress-fade {
-  0%, 100% { opacity: 0.7; }
-  33%      { opacity: 1; }
-  66%      { opacity: 0.7; }
+/* Collapsible paste section */
+.collapsible {
+  border: 1px solid #2a2a3e;
+  border-radius: var(--radius);
+  overflow: hidden;
 }
-
-.label-paste {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
+.collapsible-header {
+  padding: 0.75rem 1rem;
   font-size: 0.85rem;
   color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  cursor: pointer;
+  user-select: none;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+.collapsible-header::before { content: '▶'; font-size: 0.65rem; transition: transform 0.2s; }
+details[open] .collapsible-header::before { transform: rotate(90deg); }
+.collapsible-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  padding: 0 1rem 1rem;
 }
 
-.btn-format {
+/* Secondary button */
+.btn-secondary {
   background: var(--accent2);
   color: var(--text);
   border: none;
   border-radius: var(--radius);
-  padding: 0.6rem 1.1rem;
+  padding: 0.55rem 1rem;
   font-size: 0.9rem;
   font-weight: 600;
   align-self: flex-start;
-  margin-top: 0.25rem;
+  cursor: pointer;
+}
+.btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Sync section */
+.sync-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+  background: var(--bg-card);
+  border-radius: var(--radius);
+  padding: 0.85rem 1rem;
 }
 
-.btn-format:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.lrc-row {
+.sync-row {
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -555,32 +550,18 @@ textarea {
 }
 
 .btn-lrc {
-  background: rgba(245, 197, 24, 0.15);
+  background: rgba(245, 197, 24, 0.12);
   color: #f5c518;
-  border: 1px solid rgba(245, 197, 24, 0.3);
+  border: 1px solid rgba(245, 197, 24, 0.25);
   border-radius: var(--radius);
-  padding: 0.5rem 1rem;
-  font-size: 0.9rem;
+  padding: 0.45rem 0.9rem;
+  font-size: 0.88rem;
   font-weight: 600;
+  cursor: pointer;
 }
+.btn-lrc:disabled { opacity: 0.4; cursor: not-allowed; }
 
-.btn-lrc:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
-}
-
-.btn-lrc-clear {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.9rem;
-  padding: 0.2rem 0.4rem;
-}
-
-.lrc-meta { font-size: 0.75rem; color: #888; text-transform: none; letter-spacing: 0; width: 100%; margin-top: 0.2rem; }
-.lrc-ok   { font-size: 0.8rem; color: #4caf50; text-transform: none; letter-spacing: 0; }
-.lrc-warn { font-size: 0.8rem; color: #ff9800; text-transform: none; letter-spacing: 0; }
-.lrc-err  { font-size: 0.8rem; color: #e94560; text-transform: none; letter-spacing: 0; }
+.lrc-meta { font-size: 0.75rem; color: #888; }
 
 .bpm-row {
   display: flex;
@@ -588,40 +569,52 @@ textarea {
   gap: 0.5rem;
   flex-wrap: wrap;
 }
-.bpm-label {
-  font-size: 0.85rem;
-  color: var(--text-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-}
 .btn-tap {
   background: var(--accent2);
   color: var(--text);
   border: none;
   border-radius: var(--radius);
-  padding: 0.5rem 0.9rem;
-  font-size: 0.9rem;
+  padding: 0.45rem 0.85rem;
+  font-size: 0.88rem;
   font-weight: 600;
   cursor: pointer;
 }
 .bpm-input {
   width: 5rem;
   text-align: center;
-  background: var(--bg-card);
+  background: var(--bg);
   border: 1px solid #333;
   border-radius: var(--radius);
   color: var(--text);
-  padding: 0.5rem;
+  padding: 0.45rem;
   font-size: 1rem;
 }
 
-.yt-input-row {
+/* Actions */
+.form-actions {
+  display: flex;
+  gap: 0.75rem;
+  padding-bottom: 1.5rem;
+}
+.btn-save {
+  flex: 1;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  font-size: 1rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.btn-play {
+  background: var(--accent2);
+  color: var(--text);
+  border-radius: var(--radius);
+  padding: 0.9rem 1.2rem;
+  font-weight: 700;
+  font-size: 1rem;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
-}
-
-.yt-input-row input {
-  flex: 1;
 }
 </style>
