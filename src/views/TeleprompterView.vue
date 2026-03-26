@@ -76,6 +76,7 @@
             :ref="el => { if (el) lineRefs[i] = el }"
             @click.stop="syncMode && lineTimings[i] !== null && seekToLineByIndex(i)"
           >{{ line.text }}</div>
+          <div v-else-if="line.type === 'section'" class="tp-section-label">{{ line.label }}</div>
           <div v-else class="tp-blank"></div>
         </template>
       </div>
@@ -96,6 +97,11 @@
       <div class="ctrl-group">
         <button class="ctrl-btn" @click="fontSize = Math.max(14, fontSize - 2)">A−</button>
         <button class="ctrl-btn" @click="fontSize = Math.min(60, fontSize + 2)">A+</button>
+      </div>
+      <div class="ctrl-group">
+        <button class="ctrl-btn" @click="transposeSteps--">♭</button>
+        <button class="ctrl-btn transpose-val" :class="{ active: transposeSteps !== 0 }">{{ transposeSteps > 0 ? '+' + transposeSteps : transposeSteps }}</button>
+        <button class="ctrl-btn" @click="transposeSteps++">♯</button>
       </div>
       <div v-if="!syncMode" class="ctrl-group">
         <button class="ctrl-btn" @click="speed = Math.max(5, speed - 5)">🐢</button>
@@ -132,7 +138,7 @@ import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import ChordDiagram from '../components/ChordDiagram.vue'
-import { extractChordNames, getChord, transposeChord } from '../data/chords.js'
+import { extractChordNames, getChord, transposeChord, transposeContent } from '../data/chords.js'
 import { parseLrc, matchLrcToLines } from '../utils/parseLrc.js'
 
 const route = useRoute()
@@ -147,6 +153,13 @@ const scrolling = ref(false)
 const controlsHidden = ref(false)
 const showChordDiagrams = ref(false)
 const capoFret = ref(0)
+const transposeSteps = ref(0)
+
+const displayContent = computed(() =>
+  transposeSteps.value === 0
+    ? (song.value?.content ?? '')
+    : transposeContent(song.value?.content ?? '', transposeSteps.value)
+)
 
 // --- Sync mode ---
 const syncEnabled = ref(false)
@@ -207,10 +220,7 @@ watch(syncEnabled, async (enabled) => {
 })
 
 // --- Chord display ---
-const chordNames = computed(() => {
-  if (!song.value?.content) return []
-  return extractChordNames(song.value.content)
-})
+const chordNames = computed(() => extractChordNames(displayContent.value))
 
 const displayChords = computed(() => {
   return chordNames.value.map(name => {
@@ -224,8 +234,8 @@ let lastTime = null
 
 // --- Parsed lines ---
 const parsedLines = computed(() => {
-  if (!song.value?.content) return []
-  const lines = song.value.content.split('\n')
+  if (!displayContent.value) return []
+  const lines = displayContent.value.split('\n')
   const result = []
   const isChordLine = (s) => /^\s*(\[[\w#b/]+\]\s*)+$/.test(s)
   let i = 0
@@ -260,6 +270,11 @@ const parsedLines = computed(() => {
       continue
     }
 
+    if (/^\[(?:verse|chorus|bridge|intro|outro|pre-chorus|hook|interlude|solo)[^\]]*\]$/i.test(raw.trim())) {
+      result.push({ type: 'section', label: raw.trim().slice(1, -1) })
+      i++
+      continue
+    }
     const lyric = raw.replace(/\[[\w#b/]+\]/g, '').trimEnd()
     result.push({ type: 'lyric', text: lyric || raw })
     i++
@@ -609,6 +624,17 @@ onUnmounted(() => {
 }
 .tp-blank { height: 1.2em; }
 
+.tp-section-label {
+  font-size: 0.7em;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--chord, #f5c518);
+  opacity: 0.6;
+  margin-top: 0.8em;
+  margin-bottom: 0.2em;
+}
+
 /* ── Controls bar ───────────────────────────────────────────── */
 .tp-controls {
   position: fixed;
@@ -659,6 +685,17 @@ onUnmounted(() => {
   padding: 0.45rem 0.85rem;
 }
 .ctrl-group { display: flex; gap: 0.2rem; }
+.transpose-val {
+  min-width: 2rem;
+  font-size: 0.8rem;
+  pointer-events: none;
+  opacity: 0.7;
+}
+.transpose-val.active {
+  opacity: 1;
+  color: var(--chord, #f5c518);
+}
+
 .nudge-btn {
   font-size: clamp(0.65rem, 2.8vw, 0.8rem);
   padding: 0.45rem 0.45rem;

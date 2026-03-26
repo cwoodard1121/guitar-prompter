@@ -5,12 +5,14 @@
       <RouterLink to="/song/new" class="btn-add">+ New Song</RouterLink>
     </header>
 
+    <input v-if="store.songs.length > 4" v-model="q" class="search-input" type="search" placeholder="Search songs..." />
+
     <div v-if="store.songs.length === 0" class="empty">
       <p>No songs yet. Tap <strong>+ New Song</strong> to get started.</p>
     </div>
 
     <ul v-else class="song-list">
-      <li v-for="song in store.songs" :key="song.id" class="song-card">
+      <li v-for="song in filtered" :key="song.id" class="song-card">
         <div class="song-info">
           <span class="song-title">{{ song.title }}</span>
           <span class="song-artist">{{ song.artist }}</span>
@@ -26,10 +28,19 @@
 </template>
 
 <script setup>
+import { ref, computed } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 
 const store = useSongsStore()
+const q = ref('')
+const filtered = computed(() => {
+  const s = q.value.toLowerCase().trim()
+  if (!s) return store.songs
+  return store.songs.filter(song =>
+    song.title?.toLowerCase().includes(s) || song.artist?.toLowerCase().includes(s)
+  )
+})
 
 async function confirmDelete(song) {
   if (confirm(`Delete "${song.title}"?`)) {
@@ -142,4 +153,16 @@ async function confirmDelete(song) {
 .btn-delete {
   background: #3a1a1a;
 }
+
+.search-input {
+  background: var(--bg-card);
+  border: 1px solid #333;
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 0.65rem 0.9rem;
+  font-size: 1rem;
+  width: 100%;
+  outline: none;
+}
+.search-input:focus { border-color: var(--accent); }
 </style>
