@@ -115,6 +115,9 @@ if (PASSWORD) {
   })
 }
 
+// ── Health check ─────────────────────────────────────────────────────────────
+app.get('/api/health', (_req, res) => res.json({ ok: true }))
+
 // ── Body parsing ────────────────────────────────────────────────────────────
 app.use(express.json())
 
