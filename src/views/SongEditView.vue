@@ -47,6 +47,42 @@ Future's coming much too slow"
         ></textarea>
       </label>
 
+      <div class="lrc-row">
+        <button
+          type="button"
+          class="btn-suggest btn-lrc"
+          :disabled="lrcStatus === 'loading' || !form.title || !form.artist"
+          @click="fetchLrcSync"
+        >
+          {{ lrcStatus === 'loading' ? 'Fetching…' : '⏱ Fetch Sync' }}
+        </button>
+        <span v-if="lrcStatus === 'found'" class="lrc-ok">✓ Synced lyrics found</span>
+        <span v-if="lrcMeta" class="lrc-meta">
+          {{ lrcMeta.albumName ? `"${lrcMeta.albumName}"` : '' }}
+          {{ lrcMeta.duration ? `· ${Math.floor(lrcMeta.duration / 60)}:${String(lrcMeta.duration % 60).padStart(2,'0')}` : '' }}
+          — find this exact version on YouTube
+        </span>
+        <span v-else-if="lrcStatus === 'not_found'" class="lrc-warn">No synced lyrics available</span>
+        <span v-else-if="lrcStatus === 'error'" class="lrc-err">Fetch failed</span>
+        <span v-else-if="form.syncedLyrics" class="lrc-ok">✓ Sync data stored</span>
+        <button
+          v-if="form.syncedLyrics"
+          type="button"
+          class="btn-lrc-clear"
+          @click="form.syncedLyrics = null; lrcStatus = 'idle'"
+        >✕</button>
+      </div>
+
+      <label>
+        YouTube
+        <span class="hint">Paste a YouTube link — video will play alongside the teleprompter</span>
+        <div class="yt-input-row">
+          <input v-model="youtubeUrlInput" type="text" placeholder="https://youtube.com/watch?v=..." />
+          <span v-if="form.youtubeId" class="lrc-ok">✓</span>
+          <button v-if="form.youtubeId" type="button" class="btn-lrc-clear" @click="youtubeUrlInput = ''; form.youtubeId = null">✕</button>
+        </div>
+      </label>
+
       <div class="chord-suggest">
         <button type="button" class="btn-suggest btn-lyrics" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
           {{ loadingLyrics ? 'Researching…' : '🤖 AI fetch (beta)' }}
@@ -70,7 +106,7 @@ Future's coming much too slow"
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import ChordChart from '../components/ChordChart.vue'
@@ -82,11 +118,19 @@ const store = useSongsStore()
 
 const isNew = computed(() => route.params.id === undefined)
 
-const form = ref({ title: '', artist: '', content: '' })
+const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null })
 const pasteText = ref('')
 const loadingLyrics = ref(false)
 const chordError = ref('')
 const loadingPhase = ref('')
+const lrcStatus = ref('idle') // 'idle' | 'loading' | 'found' | 'not_found' | 'error'
+const lrcMeta = ref(null) // { albumName, duration } from LRCLIB — helps find the right YT video
+const youtubeUrlInput = ref('')
+
+watch(youtubeUrlInput, (url) => {
+  const m = url.match(/(?:youtu\.be\/|[?&]v=)([\w-]{11})/)
+  form.value.youtubeId = m ? m[1] : null
+})
 
 function formatPaste() {
   if (!pasteText.value.trim()) return
@@ -174,10 +218,41 @@ function parseChordResponse(data) {
 onMounted(() => {
   if (!isNew.value) {
     const song = store.getSong(route.params.id)
-    if (song) form.value = { title: song.title, artist: song.artist, content: song.content }
+    if (song) {
+      form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null }
+      if (song.youtubeId) youtubeUrlInput.value = `https://www.youtube.com/watch?v=${song.youtubeId}`
+    }
     else router.replace('/')
   }
 })
+
+async function fetchLrcSync() {
+  if (!form.value.title || !form.value.artist) return
+  lrcStatus.value = 'loading'
+  try {
+    const params = new URLSearchParams({
+      artist_name: form.value.artist,
+      track_name: form.value.title
+    })
+    const res = await fetch(`https://lrclib.net/api/get?${params}`, {
+      headers: { 'Lrclib-Client': 'guitar-prompter/1.0' }
+    })
+    if (!res.ok) throw new Error(res.status)
+    const data = await res.json()
+    if (data.syncedLyrics) {
+      form.value.syncedLyrics = data.syncedLyrics
+      lrcStatus.value = 'found'
+      lrcMeta.value = {
+        albumName: data.albumName || null,
+        duration: data.duration || null
+      }
+    } else {
+      lrcStatus.value = 'not_found'
+    }
+  } catch {
+    lrcStatus.value = 'error'
+  }
+}
 
 async function save() {
   try {
@@ -411,5 +486,50 @@ textarea {
 .btn-format:disabled {
   opacity: 0.4;
   cursor: not-allowed;
+}
+
+.lrc-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.btn-lrc {
+  background: rgba(245, 197, 24, 0.15);
+  color: #f5c518;
+  border: 1px solid rgba(245, 197, 24, 0.3);
+  border-radius: var(--radius);
+  padding: 0.5rem 1rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.btn-lrc:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.btn-lrc-clear {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.9rem;
+  padding: 0.2rem 0.4rem;
+}
+
+.lrc-meta { font-size: 0.75rem; color: #888; text-transform: none; letter-spacing: 0; width: 100%; margin-top: 0.2rem; }
+.lrc-ok   { font-size: 0.8rem; color: #4caf50; text-transform: none; letter-spacing: 0; }
+.lrc-warn { font-size: 0.8rem; color: #ff9800; text-transform: none; letter-spacing: 0; }
+.lrc-err  { font-size: 0.8rem; color: #e94560; text-transform: none; letter-spacing: 0; }
+
+.yt-input-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.yt-input-row input {
+  flex: 1;
 }
 </style>
