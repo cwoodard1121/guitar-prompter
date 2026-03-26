@@ -651,6 +651,14 @@ function handleKeydown(e) {
     case '-':
       speed.value = Math.max(5, speed.value - 5)
       break
+    case 'k':
+    case 'K':
+      goNextSong()
+      break
+    case 'j':
+    case 'J':
+      goPrevSong()
+      break
   }
 }
 
