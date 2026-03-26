@@ -6,9 +6,11 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "start": "node server.js"
   },
   "dependencies": {
+    "express": "^5.2.1",
     "openai": "^6.32.0",
     "pinia": "^2.1.7",
     "svguitar": "^2.5.1",

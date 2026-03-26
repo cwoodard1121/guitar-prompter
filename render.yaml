@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: guitar-prompter
+    runtime: node
+    buildCommand: npm install && npm run build
+    startCommand: node server.js
+    envVars:
+      - key: OPENAI_API_KEY
+        sync: false        # set manually in Render dashboard
+      - key: SITE_PASSWORD
+        sync: false        # set manually in Render dashboard
+    plan: free
