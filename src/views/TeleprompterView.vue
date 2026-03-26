@@ -42,14 +42,14 @@
 
       <div class="tp-lines">
         <template v-for="(line, i) in parsedLines" :key="i">
-          <div v-if="line.type === 'chord'" class="tp-chord-row">
-            <span
-              v-for="(seg, j) in line.segments"
-              :key="j"
-              class="tp-chord"
-              :class="{ 'tp-chord-transition': j === line.segments.length - 1 }"
-              :style="{ marginLeft: seg.offset + 'ch' }"
-            >{{ seg.chord }}</span>
+          <div v-if="line.type === 'chord-lyric'" class="tp-chord-lyric-row">
+            <span v-for="(seg, j) in line.segments" :key="j" class="tp-segment">
+              <span class="tp-chord-above" :class="{ 'tp-chord-transition': seg.isTransition }">{{ seg.chord ?? '' }}</span>
+              <span class="tp-lyric-below">{{ seg.lyric }}</span>
+            </span>
+          </div>
+          <div v-else-if="line.type === 'chord-only'" class="tp-chord-only-row">
+            <span v-for="(chord, j) in line.chords" :key="j" class="tp-chord-solo">{{ chord }}</span>
           </div>
           <div v-else-if="line.type === 'lyric'" class="tp-lyric-row">{{ line.text }}</div>
           <div v-else class="tp-blank"></div>
@@ -130,31 +130,61 @@ const parsedLines = computed(() => {
   if (!song.value?.content) return []
   const lines = song.value.content.split('\n')
   const result = []
+  const isChordLine = (s) => /^\s*(\[[\w#b/]+\]\s*)+$/.test(s)
+  let i = 0
 
-  for (const raw of lines) {
+  while (i < lines.length) {
+    const raw = lines[i]
+
     if (!raw.trim()) {
       result.push({ type: 'blank' })
+      i++
       continue
     }
 
-    const chordLineMatch = /^\s*(\[[\w#b/]+\]\s*)+$/.test(raw)
-    if (chordLineMatch) {
-      const segments = []
+    if (isChordLine(raw)) {
+      // Parse chord positions from the chord line
+      const chords = []
       const re = /\[([^\]]+)\]/g
       let m
-      let prevAbsEnd = 0
       while ((m = re.exec(raw)) !== null) {
-        const chordName = m[1]
-        const relOffset = m.index - prevAbsEnd
-        segments.push({ chord: chordName, offset: relOffset })
-        prevAbsEnd = m.index + chordName.length
+        chords.push({ chord: m[1], col: m.index })
       }
-      result.push({ type: 'chord', segments })
+
+      // Look ahead: pair with next line if it's a lyric line
+      const next = lines[i + 1]
+      if (next !== undefined && next.trim() && !isChordLine(next)) {
+        const lyric = next.replace(/\[[\w#b/]+\]/g, '') // strip any inline chords
+        const segments = []
+
+        // If lyric starts before the first chord, prepend a no-chord segment
+        if (chords.length > 0 && chords[0].col > 0) {
+          segments.push({ chord: null, lyric: lyric.slice(0, chords[0].col), isTransition: false })
+        }
+
+        for (let k = 0; k < chords.length; k++) {
+          const start = chords[k].col
+          const end = k < chords.length - 1 ? chords[k + 1].col : lyric.length
+          segments.push({
+            chord: chords[k].chord,
+            lyric: lyric.slice(start, end),
+            isTransition: k === chords.length - 1,
+          })
+        }
+
+        result.push({ type: 'chord-lyric', segments })
+        i += 2
+      } else {
+        // Chord-only line (intro riff, no following lyric)
+        result.push({ type: 'chord-only', chords: chords.map(c => c.chord) })
+        i++
+      }
       continue
     }
 
     const lyric = raw.replace(/\[[\w#b/]+\]/g, '').trimEnd()
     result.push({ type: 'lyric', text: lyric || raw })
+    i++
   }
 
   return result
@@ -347,24 +377,49 @@ onUnmounted(() => {
   flex-direction: column;
 }
 
-.tp-chord-row {
+.tp-chord-lyric-row {
   display: flex;
   flex-wrap: wrap;
-  line-height: 1.2;
-  min-height: 1.4em;
-  padding-bottom: 0.1em;
+  align-items: flex-end;
+  margin-bottom: 0.15em;
 }
 
-.tp-chord {
-  color: var(--chord, #f5c518);
-  font-weight: 700;
-  font-family: 'Courier New', monospace;
+.tp-segment {
+  display: inline-flex;
+  flex-direction: column;
   white-space: pre;
 }
 
-.tp-chord-transition {
+.tp-chord-above {
+  color: var(--chord, #f5c518);
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  line-height: 1.3;
+  min-height: 1.3em;
+}
+
+.tp-chord-above.tp-chord-transition {
   opacity: 0.5;
-  margin-left: 1ch !important;
+}
+
+.tp-lyric-below {
+  color: #fff;
+  font-family: 'Courier New', monospace;
+  line-height: 1.5;
+}
+
+.tp-chord-only-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1ch;
+  color: var(--chord, #f5c518);
+  font-weight: 700;
+  font-family: 'Courier New', monospace;
+  margin-bottom: 0.3em;
+}
+
+.tp-chord-solo {
+  white-space: pre;
 }
 
 .tp-lyric-row {
