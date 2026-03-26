@@ -8,12 +8,13 @@
   --bg: #1a1a2e;
   --bg-card: #16213e;
   --accent: #e94560;
-  --accent2: #0f3460;
+  --accent2: #1a4a8a;
   --text: #eaeaea;
   --text-muted: #888;
   --chord: #f5c518;
   --radius: 10px;
   --font-base: 18px;
+  --border-subtle: rgba(255,255,255,0.07);
 }
 
 html, body {
@@ -40,6 +41,7 @@ a {
 button {
   cursor: pointer;
   font-family: inherit;
+  transition: opacity 0.15s, background 0.15s, transform 0.1s;
 }
 
 input, textarea {
