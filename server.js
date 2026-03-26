@@ -155,7 +155,7 @@ app.delete('/api/songs', async (req, res) => {
 app.get('/api/setlists', async (_req, res) => {
   const { data, error } = await supabase.from('setlists').select('*').order('created_at')
   if (error) return res.status(500).json({ error: error.message })
-  res.json(data)
+  res.json(data.map(r => ({ id: r.id, name: r.name, songIds: r.song_ids ?? [] })))
 })
 
 app.post('/api/setlists', async (req, res) => {
