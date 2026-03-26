@@ -167,7 +167,7 @@ app.get('/api/lyrics', async (req, res) => {
 // ── Serve built Vue app ──────────────────────────────────────────────────────
 const distDir = path.join(__dirname, 'dist')
 app.use(express.static(distDir))
-app.get('*', (_req, res) => res.sendFile(path.join(distDir, 'index.html')))
+app.get('/{*path}', (_req, res) => res.sendFile(path.join(distDir, 'index.html')))
 
 // ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => console.log(`Guitar Prompter running on :${PORT}`))
