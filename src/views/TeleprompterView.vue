@@ -161,7 +161,7 @@
 </template>
 
 <script setup>
-import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import { useSetlistsStore } from '../stores/setlists.js'
@@ -590,7 +590,74 @@ function goHome() {
   router.push('/')
 }
 
+// --- Keyboard shortcuts ---
+function seekToNextSection() {
+  if (!syncMode.value) { contentEl.value?.scrollBy({ top: PAGE_JUMP, behavior: 'smooth' }); return }
+  const lines = parsedLines.value
+  const timings = activeTimings.value
+  const cur = Math.max(0, currentSyncLine.value)
+  for (let i = cur + 1; i < lines.length; i++) {
+    if (lines[i].type === 'section') {
+      for (let j = i + 1; j < timings.length; j++) {
+        if (timings[j] !== null) { seekToLineByIndex(j); return }
+      }
+    }
+  }
+  seekLine(1) // no section found — advance one line
+}
+
+function seekToPrevSection() {
+  if (!syncMode.value) { contentEl.value?.scrollBy({ top: -PAGE_JUMP, behavior: 'smooth' }); return }
+  const lines = parsedLines.value
+  const timings = activeTimings.value
+  const cur = Math.max(0, currentSyncLine.value)
+  for (let i = cur - 1; i >= 0; i--) {
+    if (lines[i].type === 'section') {
+      for (let j = i + 1; j < timings.length; j++) {
+        if (timings[j] !== null) { seekToLineByIndex(j); return }
+      }
+    }
+  }
+  seekByProgress(0) // no previous section — go to start
+}
+
+function handleKeydown(e) {
+  if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return
+  switch (e.key) {
+    case ' ':
+      e.preventDefault()
+      toggleScroll()
+      break
+    case 'ArrowRight':
+    case 'ArrowDown':
+      e.preventDefault()
+      seekToNextSection()
+      break
+    case 'ArrowLeft':
+    case 'ArrowUp':
+      e.preventDefault()
+      seekToPrevSection()
+      break
+    case '[':
+      nudgeOffset(-0.5)
+      break
+    case ']':
+      nudgeOffset(0.5)
+      break
+    case '+':
+    case '=':
+      speed.value = Math.min(200, speed.value + 5)
+      break
+    case '-':
+      speed.value = Math.max(5, speed.value - 5)
+      break
+  }
+}
+
+onMounted(() => { window.addEventListener('keydown', handleKeydown) })
+
 onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown)
   if (rafId) cancelAnimationFrame(rafId)
   stopSyncTick()
   if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null }
