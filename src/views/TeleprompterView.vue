@@ -2,8 +2,20 @@
   <div class="tp-root" :style="{ fontSize: fontSize + 'px' }">
 
     <!-- Tap zones (invisible, full height) — hidden when chord diagrams showing -->
-    <div class="tap-zone tap-left" :class="{ disabled: showChordDiagrams }" @click="scrollBack"></div>
-    <div class="tap-zone tap-right" :class="{ disabled: showChordDiagrams }" @click="scrollForward"></div>
+    <div
+      class="tap-zone tap-left"
+      :class="{ disabled: showChordDiagrams }"
+      @touchstart.passive="tapZoneStart"
+      @touchend="tapZoneEnd($event, 'back')"
+      @click="scrollBack"
+    ></div>
+    <div
+      class="tap-zone tap-right"
+      :class="{ disabled: showChordDiagrams }"
+      @touchstart.passive="tapZoneStart"
+      @touchend="tapZoneEnd($event, 'forward')"
+      @click="scrollForward"
+    ></div>
 
     <!-- Song content -->
     <div ref="contentEl" class="tp-content">
@@ -88,10 +100,9 @@
 
     <!-- YouTube embed overlay -->
     <div v-if="hasYoutube && syncEnabled" class="yt-overlay" :class="{ 'yt-hidden': !showYT }">
-      <div class="yt-header">
-        <span class="yt-label">▶ YouTube</span>
-        <button class="yt-toggle-btn" @click="showYT = !showYT">{{ showYT ? '▾' : '▸' }}</button>
-      </div>
+      <button class="yt-toggle-btn" @click="showYT = !showYT">
+        {{ showYT ? '▾ YT' : '▸ YT' }}
+      </button>
       <div ref="ytPlayerEl" class="yt-player-el"></div>
     </div>
 
@@ -125,6 +136,13 @@
       <button v-if="!syncMode" class="ctrl-btn catchup-btn" @click="catchUp">
         ⏩
       </button>
+    </div>
+
+    <!-- Song position dots (above play bar, sync mode only) -->
+    <div v-if="syncMode" class="tp-seek-bar" @click="seekByClick" @touchstart.passive="onSeekTouchStart" @touchend="seekByTouch">
+      <span class="tp-seek-dot" :class="{ active: seekSegment === 0 }"></span>
+      <span class="tp-seek-dot" :class="{ active: seekSegment === 1 }"></span>
+      <span class="tp-seek-dot" :class="{ active: seekSegment === 2 }"></span>
     </div>
 
     <!-- Floating play bar (bottom) -->
@@ -221,7 +239,7 @@ const lineRefs = ref([])
 // --- YouTube ---
 const ytPlayerEl = ref(null)
 const ytReady = ref(false)
-const showYT = ref(true)
+const showYT = ref(false)
 let ytPlayer = null
 
 const hasYoutube = computed(() => !!song.value?.youtubeId)
@@ -367,6 +385,52 @@ const bpmTimings = computed(() => {
 
 const activeTimings = computed(() => hasSync.value ? lineTimings.value : bpmTimings.value)
 
+// Seek bar progress (0–1) and segment (0/1/2)
+const seekProgress = computed(() => {
+  const timings = activeTimings.value.filter(t => t !== null)
+  if (!timings.length) return 0
+  const last = timings[timings.length - 1]
+  if (!last) return 0
+  return Math.min(1, Math.max(0, elapsed.value / last))
+})
+const seekSegment = computed(() => Math.min(2, Math.floor(seekProgress.value * 3)))
+
+function seekByProgress(fraction) {
+  const timings = activeTimings.value.filter(t => t !== null)
+  if (!timings.length) return
+  const last = timings[timings.length - 1]
+  const target = fraction * last
+  // Find nearest timed line
+  let best = -1, bestDist = Infinity
+  for (let i = 0; i < activeTimings.value.length; i++) {
+    const t = activeTimings.value[i]
+    if (t === null) continue
+    const d = Math.abs(t - target)
+    if (d < bestDist) { bestDist = d; best = i }
+  }
+  if (best >= 0) seekToLineByIndex(best)
+}
+
+function seekByClick(e) {
+  const rect = e.currentTarget.getBoundingClientRect()
+  seekByProgress((e.clientX - rect.left) / rect.width)
+}
+
+let seekTouchX = 0
+function onSeekTouchStart(e) { seekTouchX = e.touches[0].clientX }
+function seekByTouch(e) {
+  const rect = e.currentTarget.getBoundingClientRect()
+  seekByProgress((seekTouchX - rect.left) / rect.width)
+}
+
+// Tap zone: distinguish tap vs swipe
+let tapStartY = 0
+function tapZoneStart(e) { tapStartY = e.touches[0].clientY }
+function tapZoneEnd(e, dir) {
+  const dy = Math.abs(e.changedTouches[0].clientY - tapStartY)
+  if (dy < 12) dir === 'forward' ? scrollForward() : scrollBack()
+}
+
 const currentSyncLine = computed(() => {
   if (!syncMode.value) return -1
   let best = -1
@@ -429,7 +493,7 @@ function stopSyncTick() {
 watch(syncMode, (active) => {
   if (active) startSyncTick()
   else stopSyncTick()
-})
+}, { immediate: true })
 
 // Manual scroll tick (non-sync mode)
 function tick(ts) {
@@ -559,6 +623,7 @@ onUnmounted(() => {
   bottom: 0;
   width: 30%;
   z-index: 10;
+  touch-action: pan-y;
 }
 .tap-zone.disabled { pointer-events: none; }
 .tap-left  { left: 0; }
@@ -869,33 +934,27 @@ onUnmounted(() => {
 /* ── YouTube overlay ────────────────────────────────────────── */
 .yt-overlay {
   position: fixed;
-  /* sit above the bottom safe area */
-  bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  bottom: calc(5.5rem + env(safe-area-inset-bottom, 0px));
   right: calc(0.75rem + env(safe-area-inset-right, 0px));
   z-index: 20;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: hidden;
   background: #111;
-  box-shadow: 0 4px 24px rgba(0,0,0,0.7);
-  /* responsive width: 40% of viewport width, capped 160–260px */
-  width: clamp(160px, 40vw, 260px);
+  box-shadow: 0 4px 16px rgba(0,0,0,0.6);
+  width: 130px;
 }
-.yt-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.3rem 0.5rem;
-  background: rgba(255,255,255,0.06);
-}
-.yt-label { font-size: 0.7rem; color: #888; }
 .yt-toggle-btn {
-  background: none;
+  display: block;
+  width: 100%;
+  background: rgba(255,255,255,0.08);
   border: none;
   color: #aaa;
-  font-size: 0.85rem;
-  padding: 0 0.2rem;
+  font-size: 0.72rem;
+  padding: 0.3rem 0.5rem;
+  text-align: left;
   cursor: pointer;
   touch-action: manipulation;
+  letter-spacing: 0.03em;
 }
 .yt-player-el {
   width: 100%;
@@ -904,9 +963,34 @@ onUnmounted(() => {
 }
 .yt-hidden .yt-player-el { display: none; }
 
-/* ── Landscape phone: smaller YT overlay so lyrics still visible */
+/* ── Landscape phone ─────────────────────────────────────────── */
 @media (max-height: 500px) {
-  .yt-overlay { width: clamp(130px, 28vw, 200px); }
   .tp-content { padding-top: 4rem; }
+}
+
+/* ── Seek dots ───────────────────────────────────────────────── */
+.tp-seek-bar {
+  position: fixed;
+  bottom: calc(4.5rem + env(safe-area-inset-bottom, 0px));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 1rem;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.tp-seek-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.2);
+  transition: background 0.3s;
+  display: block;
+}
+.tp-seek-dot.active {
+  background: rgba(255,255,255,0.7);
 }
 </style>
