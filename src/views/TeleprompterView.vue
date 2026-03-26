@@ -96,7 +96,7 @@
     </div>
 
     <!-- Controls overlay (top) -->
-    <div class="tp-controls" :class="{ hidden: controlsHidden }">
+    <div class="tp-controls">
       <button class="ctrl-btn" @click="goHome">✕</button>
       <div class="ctrl-group">
         <button class="ctrl-btn" @click="fontSize = Math.max(14, fontSize - 2)">A−</button>
@@ -119,24 +119,25 @@
         ⏱ Sync
       </button>
       <template v-if="syncMode">
-        <button class="ctrl-btn nudge-btn" @click="syncOffset -= 0.5" title="Lyrics ahead — shift back">−½s</button>
-        <button class="ctrl-btn nudge-btn" @click="syncOffset += 0.5" title="Lyrics behind — shift forward">+½s</button>
+        <button class="ctrl-btn nudge-btn" @click="nudgeOffset(-0.5)" title="Lyrics ahead — shift back">−½s</button>
+        <button class="ctrl-btn nudge-btn" @click="nudgeOffset(0.5)" title="Lyrics behind — shift forward">+½s</button>
       </template>
       <button v-if="!syncMode" class="ctrl-btn catchup-btn" @click="catchUp">
         ⏩
       </button>
-      <button class="ctrl-btn play-btn" @click="toggleScroll">
+    </div>
+
+    <!-- Floating play bar (bottom) -->
+    <div class="tp-play-bar">
+      <template v-if="setlistId">
+        <button class="play-bar-nav" :disabled="!hasPrevSong" @click="goPrevSong">‹</button>
+      </template>
+      <button class="play-bar-btn" @click="toggleScroll">
         {{ scrolling ? '⏸' : '▶' }}
       </button>
       <template v-if="setlistId">
-        <button class="ctrl-btn setlist-nav-btn" :disabled="!hasPrevSong" @click="goPrevSong">‹</button>
-        <button class="ctrl-btn setlist-nav-btn" :disabled="!hasNextSong" @click="goNextSong">›</button>
+        <button class="play-bar-nav" :disabled="!hasNextSong" @click="goNextSong">›</button>
       </template>
-    </div>
-
-    <!-- Tap to show controls hint -->
-    <div class="ctrl-toggle" @click="controlsHidden = !controlsHidden">
-      <span>{{ controlsHidden ? '☰' : '▲' }}</span>
     </div>
   </div>
 </template>
@@ -186,7 +187,6 @@ const contentEl = ref(null)
 const fontSize = ref(24)
 const speed = ref(40)
 const scrolling = ref(false)
-const controlsHidden = ref(false)
 const showChordDiagrams = ref(false)
 const capoFret = ref(0)
 const transposeSteps = ref(0)
@@ -199,10 +199,23 @@ const displayContent = computed(() =>
 
 // --- Sync mode ---
 const syncEnabled = ref(false)
-watch(song, (s) => { if (s?.syncedLyrics) syncEnabled.value = true }, { immediate: true })
 const playStartTime = ref(null)
 const elapsed = ref(0)
 const syncOffset = ref(0)   // seconds — positive = lyrics shift earlier, negative = later
+
+function syncOffsetKey() { return `gp-sync-offset-${route.params.id}` }
+function loadSavedOffset() {
+  const saved = parseFloat(localStorage.getItem(syncOffsetKey()) || '0')
+  syncOffset.value = isNaN(saved) ? 0 : saved
+}
+function saveSyncOffset() {
+  localStorage.setItem(syncOffsetKey(), String(syncOffset.value))
+}
+
+watch(song, (s) => {
+  if (s?.syncedLyrics) syncEnabled.value = true
+  loadSavedOffset()
+}, { immediate: true })
 const lineRefs = ref([])
 
 // --- YouTube ---
@@ -467,7 +480,12 @@ function toggleSync() {
   syncEnabled.value = !syncEnabled.value
   playStartTime.value = null
   elapsed.value = 0
-  syncOffset.value = 0
+  loadSavedOffset()
+}
+
+function nudgeOffset(delta) {
+  syncOffset.value = Math.round((syncOffset.value + delta) * 10) / 10
+  saveSyncOffset()
 }
 
 const CATCHUP_JUMP = 800
@@ -551,7 +569,7 @@ onUnmounted(() => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 5rem 1.25rem 8rem;
+  padding: 5rem 1.25rem 10rem;
   scroll-behavior: auto;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
@@ -713,7 +731,6 @@ onUnmounted(() => {
   -webkit-backdrop-filter: blur(8px);
   transition: transform 0.25s ease;
 }
-.tp-controls.hidden { transform: translateY(-110%); }
 
 .ctrl-btn {
   background: rgba(255,255,255,0.12);
@@ -767,12 +784,54 @@ onUnmounted(() => {
   font-size: clamp(0.75rem, 3vw, 0.9rem);
   pointer-events: none;
 }
-.play-btn {
-  margin-left: auto;
-  background: var(--accent, #e94560);
-  font-size: clamp(1rem, 4vw, 1.3rem);
-  padding: 0.45rem 0.85rem;
+/* ── Floating play bar (bottom) ─────────────────────────────── */
+.tp-play-bar {
+  position: fixed;
+  bottom: env(safe-area-inset-bottom, 1rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border-radius: 99px;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255,255,255,0.1);
 }
+.play-bar-btn {
+  background: var(--accent, #e94560);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 1.4rem;
+  width: 3.2rem;
+  height: 3.2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.play-bar-btn:active { transform: scale(0.92); }
+.play-bar-nav {
+  background: rgba(255,255,255,0.1);
+  border: none;
+  border-radius: 50%;
+  color: #fff;
+  font-size: 1.4rem;
+  width: 2.6rem;
+  height: 2.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.play-bar-nav:disabled { opacity: 0.2; }
+.play-bar-nav:active:not(:disabled) { transform: scale(0.92); }
 .ctrl-group { display: flex; gap: 0.2rem; }
 .transpose-val {
   min-width: 2rem;
@@ -799,22 +858,6 @@ onUnmounted(() => {
   opacity: 0.85;
 }
 
-/* ── Show/hide toggle ───────────────────────────────────────── */
-.ctrl-toggle {
-  position: fixed;
-  top: env(safe-area-inset-top, 0px);
-  right: 0.75rem;
-  z-index: 25;
-  background: rgba(0,0,0,0.6);
-  border-radius: 0 0 8px 8px;
-  padding: 0.3rem 0.6rem;
-  color: #aaa;
-  font-size: 1rem;
-  cursor: pointer;
-  user-select: none;
-  -webkit-tap-highlight-color: transparent;
-  touch-action: manipulation;
-}
 
 /* ── Sync highlights ────────────────────────────────────────── */
 .tp-line-active .tp-lyric-below,
