@@ -9,7 +9,10 @@
     <div ref="contentEl" class="tp-content">
       <div class="tp-song-header">
         <span v-if="setlist" class="tp-setlist-name">{{ setlist.name }} · {{ setlistIdx + 1 }}/{{ setlist.songIds?.length }}</span>
-        <span class="tp-title">{{ song?.title }}</span>
+        <div class="tp-title-row">
+          <span class="tp-title">{{ song?.title }}</span>
+          <span v-if="syncMode" class="tp-sync-badge">⏱ Sync</span>
+        </div>
         <span class="tp-artist">{{ song?.artist }}</span>
       </div>
 
@@ -113,7 +116,7 @@
         🎸
       </button>
       <button v-if="hasSync || hasBpm" class="ctrl-btn sync-toggle-btn" :class="{ active: syncEnabled }" @click="toggleSync">
-        ⏱
+        ⏱ Sync
       </button>
       <template v-if="syncMode">
         <button class="ctrl-btn nudge-btn" @click="syncOffset -= 0.5" title="Lyrics ahead — shift back">−½s</button>
@@ -196,6 +199,7 @@ const displayContent = computed(() =>
 
 // --- Sync mode ---
 const syncEnabled = ref(false)
+watch(song, (s) => { if (s?.syncedLyrics) syncEnabled.value = true }, { immediate: true })
 const playStartTime = ref(null)
 const elapsed = ref(0)
 const syncOffset = ref(0)   // seconds — positive = lyrics shift earlier, negative = later
@@ -505,7 +509,7 @@ function scrollBack() {
 function goHome() {
   if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null }
   scrolling.value = false
-  router.push(setlistId.value ? `/setlist/${setlistId.value}/edit` : '/')
+  router.push('/')
 }
 
 onUnmounted(() => {
@@ -725,7 +729,35 @@ onUnmounted(() => {
   touch-action: manipulation;
 }
 .chord-toggle-btn.active { background: var(--chord, #f5c518); color: #000; }
-.sync-toggle-btn.active  { background: var(--chord, #f5c518); color: #000; }
+.sync-toggle-btn {
+  min-width: auto;
+  padding: 0.45rem 0.75rem;
+  font-size: clamp(0.7rem, 2.8vw, 0.85rem);
+  letter-spacing: 0.01em;
+}
+.sync-toggle-btn.active {
+  background: var(--chord, #f5c518);
+  color: #000;
+  font-weight: 700;
+}
+
+.tp-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5em;
+  flex-wrap: wrap;
+}
+.tp-sync-badge {
+  font-size: 0.6em;
+  font-weight: 700;
+  background: rgba(245,197,24,0.18);
+  color: var(--chord, #f5c518);
+  border: 1px solid rgba(245,197,24,0.35);
+  border-radius: 99px;
+  padding: 0.2em 0.55em;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+}
 
 .catchup-btn { background: rgba(255,200,0,0.2); }
 .catchup-btn:active { background: rgba(255,200,0,0.5); }
