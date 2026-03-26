@@ -439,7 +439,11 @@ input, textarea {
   width: 100%;
   box-sizing: border-box;
 }
-input:focus, textarea:focus { border-color: var(--accent); }
+input:focus, textarea:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(233,69,96,0.15);
+  outline: none;
+}
 textarea {
   resize: vertical;
   line-height: 1.6;

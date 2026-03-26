@@ -1,7 +1,10 @@
 <template>
   <div class="home">
     <header class="home-header">
-      <h1>🎸 Guitar Prompter</h1>
+      <div class="wordmark">
+        <span class="wordmark-icon">🎸</span>
+        <span class="wordmark-text">Guitar Prompter</span>
+      </div>
       <div class="header-actions">
         <RouterLink to="/setlist/new" class="btn-add btn-setlist">+ Setlist</RouterLink>
         <RouterLink to="/song/new" class="btn-add">+ Song</RouterLink>
@@ -15,7 +18,7 @@
         <li v-for="setlist in setlistsStore.setlists" :key="setlist.id" class="setlist-card">
           <div class="setlist-info">
             <span class="setlist-name">{{ setlist.name }}</span>
-            <span class="setlist-count">{{ setlist.songIds?.length ?? 0 }} songs</span>
+            <span class="setlist-count"><span class="count-badge">{{ setlist.songIds?.length ?? 0 }}</span> songs</span>
           </div>
           <div class="song-actions">
             <RouterLink
@@ -135,9 +138,32 @@ async function importSongs(e) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0;
+  padding: 0.5rem 0 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
 }
-.home-header h1 { font-size: 1.4rem; color: var(--text); }
+
+.wordmark {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+}
+.wordmark-icon {
+  font-size: 1.1rem;
+  background: var(--accent);
+  border-radius: 8px;
+  width: 2rem;
+  height: 2rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.wordmark-text {
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
 
 .header-actions { display: flex; gap: 0.5rem; }
 
@@ -148,7 +174,9 @@ async function importSongs(e) {
   border-radius: var(--radius);
   font-weight: 600;
   font-size: 0.95rem;
+  border: none;
 }
+.btn-add:active { opacity: 0.8; transform: scale(0.97); }
 .btn-setlist {
   background: var(--accent2);
   color: var(--text);
@@ -157,10 +185,13 @@ async function importSongs(e) {
 .section { display: flex; flex-direction: column; gap: 0.6rem; }
 
 .section-title {
-  font-size: 0.75rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
-  letter-spacing: 0.08em;
+  letter-spacing: 0.1em;
   color: var(--text-muted);
+  font-weight: 600;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
 .empty {
@@ -188,11 +219,21 @@ async function importSongs(e) {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  border: 1px solid var(--border-subtle);
   border-left: 3px solid var(--accent2);
 }
-.setlist-info { display: flex; flex-direction: column; gap: 0.15rem; min-width: 0; }
+.setlist-info { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .setlist-name { font-size: 1rem; font-weight: 600; }
-.setlist-count { font-size: 0.8rem; color: var(--text-muted); }
+.setlist-count { font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem; }
+.count-badge {
+  background: var(--accent2);
+  color: var(--text);
+  font-size: 0.72rem;
+  font-weight: 700;
+  border-radius: 99px;
+  padding: 0.1em 0.5em;
+  line-height: 1.4;
+}
 
 /* Songs */
 .song-list {
@@ -209,7 +250,9 @@ async function importSongs(e) {
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
+  border: 1px solid var(--border-subtle);
 }
+.song-card:active { transform: scale(0.99); opacity: 0.9; }
 .song-info {
   display: flex;
   flex-direction: column;
@@ -241,7 +284,9 @@ async function importSongs(e) {
   gap: 0.3rem;
 }
 .btn-play { background: var(--accent); color: #fff; }
-.btn-delete { background: #3a1a1a; }
+.btn-play:active { opacity: 0.85; }
+.btn-delete { background: #2a1515; color: #c0505050; }
+.btn:active { opacity: 0.8; transform: scale(0.96); }
 
 .search-input {
   background: var(--bg-card);
@@ -253,7 +298,11 @@ async function importSongs(e) {
   width: 100%;
   outline: none;
 }
-.search-input:focus { border-color: var(--accent); }
+.search-input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(233,69,96,0.15);
+  outline: none;
+}
 
 /* Export / Import */
 .io-row {
@@ -264,11 +313,11 @@ async function importSongs(e) {
 .btn-io {
   flex: 1;
   background: var(--bg-card);
-  border: 1px solid #333;
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius);
   color: var(--text-muted);
   font-size: 0.85rem;
-  padding: 0.6rem;
+  padding: 0.65rem;
   text-align: center;
   cursor: pointer;
   display: flex;
@@ -276,4 +325,5 @@ async function importSongs(e) {
   justify-content: center;
   gap: 0.4rem;
 }
+.btn-io:active { opacity: 0.7; }
 </style>
