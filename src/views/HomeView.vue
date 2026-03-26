@@ -43,6 +43,13 @@
 
       <ul v-else class="song-list">
         <li v-for="song in filtered" :key="song.id" class="song-card">
+          <img
+            v-if="song.youtubeId"
+            :src="`https://img.youtube.com/vi/${song.youtubeId}/mqdefault.jpg`"
+            class="song-thumb"
+            loading="lazy"
+            alt=""
+          />
           <div class="song-info">
             <span class="song-title">{{ song.title }}</span>
             <span class="song-artist">{{ song.artist }}</span>
@@ -253,6 +260,15 @@ async function importSongs(e) {
   border: 1px solid var(--border-subtle);
 }
 .song-card:active { transform: scale(0.99); opacity: 0.9; }
+.song-thumb {
+  width: 64px;
+  height: 36px;
+  object-fit: cover;
+  border-radius: 5px;
+  flex-shrink: 0;
+  background: #0a0a1a;
+}
+
 .song-info {
   display: flex;
   flex-direction: column;

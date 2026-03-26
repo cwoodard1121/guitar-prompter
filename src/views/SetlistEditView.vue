@@ -44,7 +44,7 @@
 
       <div class="form-actions">
         <button class="btn-save" :disabled="!name.trim()" @click="save">Save Setlist</button>
-        <RouterLink v-if="!isNew" :to="`/setlist/${route.params.id}/play`" class="btn-play">▶ Play</RouterLink>
+        <RouterLink v-if="!isNew && songIds.length > 0" :to="`/song/${songIds[0]}/play?setlist=${route.params.id}&idx=0`" class="btn-play">▶ Play</RouterLink>
       </div>
 
       <button v-if="!isNew" class="btn-delete" @click="deleteSetlist">Delete setlist</button>
