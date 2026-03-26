@@ -8,6 +8,7 @@
     <!-- Song content -->
     <div ref="contentEl" class="tp-content">
       <div class="tp-song-header">
+        <span v-if="setlist" class="tp-setlist-name">{{ setlist.name }} · {{ setlistIdx + 1 }}/{{ setlist.songIds?.length }}</span>
         <span class="tp-title">{{ song?.title }}</span>
         <span class="tp-artist">{{ song?.artist }}</span>
       </div>
@@ -48,10 +49,10 @@
             :class="{
               'tp-line-active': syncMode && i === currentSyncLine,
               'tp-line-next':   syncMode && i === nextSyncLine,
-              'tp-line-tappable': syncMode && lineTimings[i] !== null
+              'tp-line-tappable': syncMode && activeTimings[i] !== null
             }"
             :ref="el => { if (el) lineRefs[i] = el }"
-            @click.stop="syncMode && lineTimings[i] !== null && seekToLineByIndex(i)"
+            @click.stop="syncMode && activeTimings[i] !== null && seekToLineByIndex(i)"
           >
             <span v-for="(seg, j) in line.segments" :key="j" class="tp-segment">
               <span class="tp-chord-above" :class="{ 'tp-chord-transition': seg.isTransition }">{{ seg.chord ?? '' }}</span>
@@ -71,10 +72,10 @@
             :class="{
               'tp-line-active': syncMode && i === currentSyncLine,
               'tp-line-next':   syncMode && i === nextSyncLine,
-              'tp-line-tappable': syncMode && lineTimings[i] !== null
+              'tp-line-tappable': syncMode && activeTimings[i] !== null
             }"
             :ref="el => { if (el) lineRefs[i] = el }"
-            @click.stop="syncMode && lineTimings[i] !== null && seekToLineByIndex(i)"
+            @click.stop="syncMode && activeTimings[i] !== null && seekToLineByIndex(i)"
           >{{ line.text }}</div>
           <div v-else-if="line.type === 'section'" class="tp-section-label">{{ line.label }}</div>
           <div v-else class="tp-blank"></div>
@@ -111,7 +112,7 @@
       <button class="ctrl-btn chord-toggle-btn" :class="{ active: showChordDiagrams }" @click="showChordDiagrams = !showChordDiagrams">
         🎸
       </button>
-      <button v-if="hasSync" class="ctrl-btn sync-toggle-btn" :class="{ active: syncEnabled }" @click="toggleSync">
+      <button v-if="hasSync || hasBpm" class="ctrl-btn sync-toggle-btn" :class="{ active: syncEnabled }" @click="toggleSync">
         ⏱
       </button>
       <template v-if="syncMode">
@@ -124,6 +125,10 @@
       <button class="ctrl-btn play-btn" @click="toggleScroll">
         {{ scrolling ? '⏸' : '▶' }}
       </button>
+      <template v-if="setlistId">
+        <button class="ctrl-btn setlist-nav-btn" :disabled="!hasPrevSong" @click="goPrevSong">‹</button>
+        <button class="ctrl-btn setlist-nav-btn" :disabled="!hasNextSong" @click="goNextSong">›</button>
+      </template>
     </div>
 
     <!-- Tap to show controls hint -->
@@ -137,6 +142,7 @@
 import { ref, computed, nextTick, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
+import { useSetlistsStore } from '../stores/setlists.js'
 import ChordDiagram from '../components/ChordDiagram.vue'
 import { extractChordNames, getChord, transposeChord, transposeContent } from '../data/chords.js'
 import { parseLrc, matchLrcToLines } from '../utils/parseLrc.js'
@@ -144,6 +150,33 @@ import { parseLrc, matchLrcToLines } from '../utils/parseLrc.js'
 const route = useRoute()
 const router = useRouter()
 const store = useSongsStore()
+const setlistsStore = useSetlistsStore()
+
+// Setlist navigation
+const setlistId = computed(() => route.query.setlist ?? null)
+const setlistIdx = computed(() => setlistId.value ? parseInt(route.query.idx ?? '0') : -1)
+const setlist = computed(() => setlistId.value ? setlistsStore.getSetlist(setlistId.value) : null)
+const hasNextSong = computed(() => {
+  if (!setlist.value) return false
+  return setlistIdx.value < (setlist.value.songIds?.length ?? 0) - 1
+})
+const hasPrevSong = computed(() => setlistId.value && setlistIdx.value > 0)
+
+function goNextSong() {
+  if (!hasNextSong.value) return
+  if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null }
+  scrolling.value = false
+  const nextId = setlist.value.songIds[setlistIdx.value + 1]
+  router.push(`/song/${nextId}/play?setlist=${setlistId.value}&idx=${setlistIdx.value + 1}`)
+}
+
+function goPrevSong() {
+  if (!hasPrevSong.value) return
+  if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null }
+  scrolling.value = false
+  const prevId = setlist.value.songIds[setlistIdx.value - 1]
+  router.push(`/song/${prevId}/play?setlist=${setlistId.value}&idx=${setlistIdx.value - 1}`)
+}
 
 const song = computed(() => store.getSong(route.params.id))
 const contentEl = ref(null)
@@ -292,13 +325,36 @@ const lineTimings = computed(() =>
   lrcLines.value.length ? matchLrcToLines(lrcLines.value, parsedLines.value) : []
 )
 const hasSync = computed(() => lineTimings.value.some(t => t !== null))
-const syncMode = computed(() => hasSync.value && syncEnabled.value)
+const hasBpm = computed(() => !hasSync.value && !!song.value?.bpm)
+const syncMode = computed(() => (hasSync.value || hasBpm.value) && syncEnabled.value)
+
+// BPM mode: build synthetic timings from beat clock
+// One lyric line per beatsPerLine beats
+const beatsPerLine = ref(8)
+const bpmTimings = computed(() => {
+  if (!hasBpm.value || !song.value?.bpm) return []
+  const bpm = song.value.bpm
+  const secPerBeat = 60 / bpm
+  const secPerLine = secPerBeat * beatsPerLine.value
+  const timings = new Array(parsedLines.value.length).fill(null)
+  let t = 0
+  for (let i = 0; i < parsedLines.value.length; i++) {
+    const type = parsedLines.value[i].type
+    if (type !== 'blank' && type !== 'chord-only' && type !== 'section') {
+      timings[i] = t
+      t += secPerLine
+    }
+  }
+  return timings
+})
+
+const activeTimings = computed(() => hasSync.value ? lineTimings.value : bpmTimings.value)
 
 const currentSyncLine = computed(() => {
   if (!syncMode.value) return -1
   let best = -1
-  for (let i = 0; i < lineTimings.value.length; i++) {
-    const t = lineTimings.value[i]
+  for (let i = 0; i < activeTimings.value.length; i++) {
+    const t = activeTimings.value[i]
     if (t !== null && t <= elapsed.value) best = i
   }
   return best
@@ -307,8 +363,8 @@ const currentSyncLine = computed(() => {
 // Next timed line after current (for lookahead highlight)
 const nextSyncLine = computed(() => {
   if (currentSyncLine.value < 0) return -1
-  for (let i = currentSyncLine.value + 1; i < lineTimings.value.length; i++) {
-    if (lineTimings.value[i] !== null) return i
+  for (let i = currentSyncLine.value + 1; i < activeTimings.value.length; i++) {
+    if (activeTimings.value[i] !== null) return i
   }
   return -1
 })
@@ -418,7 +474,7 @@ function catchUp() {
 }
 
 function seekLine(delta) {
-  const timings = lineTimings.value
+  const timings = activeTimings.value
   let target = currentSyncLine.value + delta
   while (target >= 0 && target < timings.length && timings[target] === null) target += delta
   if (target < 0 || target >= timings.length) return
@@ -426,7 +482,7 @@ function seekLine(delta) {
 }
 
 function seekToLineByIndex(i) {
-  const targetTime = lineTimings.value[i]
+  const targetTime = activeTimings.value[i]
   if (targetTime === null || targetTime === undefined) return
   if (ytPlayer && ytReady.value) {
     ytPlayer.seekTo(targetTime, true)
@@ -449,7 +505,7 @@ function scrollBack() {
 function goHome() {
   if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null }
   scrolling.value = false
-  router.push('/')
+  router.push(setlistId.value ? `/setlist/${setlistId.value}/edit` : '/')
 }
 
 onUnmounted(() => {
@@ -505,6 +561,7 @@ onUnmounted(() => {
   margin-bottom: 1.5em;
   gap: 0.2em;
 }
+.tp-setlist-name { font-size: 0.7em; color: #888; margin-bottom: 0.1em; }
 .tp-title  { font-size: 1.2em; font-weight: 700; color: #fff; }
 .tp-artist { font-size: 0.85em; color: #aaa; }
 
@@ -695,6 +752,13 @@ onUnmounted(() => {
   opacity: 1;
   color: var(--chord, #f5c518);
 }
+
+.setlist-nav-btn {
+  font-size: 1.3rem;
+  padding: 0.4rem 0.6rem;
+  background: rgba(255,255,255,0.08);
+}
+.setlist-nav-btn:disabled { opacity: 0.2; }
 
 .nudge-btn {
   font-size: clamp(0.65rem, 2.8vw, 0.8rem);

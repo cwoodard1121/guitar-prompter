@@ -23,7 +23,8 @@ function rowToSong(row) {
     artist: row.artist ?? '',
     content: row.content ?? '',
     syncedLyrics: row.synced_lyrics ?? null,
-    youtubeId: row.youtube_id ?? null
+    youtubeId: row.youtube_id ?? null,
+    bpm: row.bpm ?? null
   }
 }
 
@@ -33,7 +34,8 @@ function songToRow(song) {
     artist: song.artist ?? '',
     content: song.content ?? '',
     synced_lyrics: song.syncedLyrics ?? null,
-    youtube_id: song.youtubeId ?? null
+    youtube_id: song.youtubeId ?? null,
+    bpm: song.bpm ?? null
   }
 }
 
@@ -145,6 +147,38 @@ app.delete('/api/songs', async (req, res) => {
   const id = req.query.id
   if (!id) return res.status(400).json({ error: 'id is required' })
   const { error } = await supabase.from('songs').delete().eq('id', id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ ok: true })
+})
+
+// ── Setlists CRUD ────────────────────────────────────────────────────────────
+app.get('/api/setlists', async (_req, res) => {
+  const { data, error } = await supabase.from('setlists').select('*').order('created_at')
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data)
+})
+
+app.post('/api/setlists', async (req, res) => {
+  const id = Date.now().toString()
+  const { data, error } = await supabase
+    .from('setlists').insert({ id, name: req.body.name ?? '', song_ids: req.body.songIds ?? [] }).select().single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.status(201).json({ id: data.id, name: data.name, songIds: data.song_ids })
+})
+
+app.put('/api/setlists', async (req, res) => {
+  const id = req.query.id
+  if (!id) return res.status(400).json({ error: 'id is required' })
+  const { data, error } = await supabase
+    .from('setlists').update({ name: req.body.name ?? '', song_ids: req.body.songIds ?? [] }).eq('id', id).select().single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ id: data.id, name: data.name, songIds: data.song_ids })
+})
+
+app.delete('/api/setlists', async (req, res) => {
+  const id = req.query.id
+  if (!id) return res.status(400).json({ error: 'id is required' })
+  const { error } = await supabase.from('setlists').delete().eq('id', id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ ok: true })
 })

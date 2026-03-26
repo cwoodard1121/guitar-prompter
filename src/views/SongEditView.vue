@@ -83,6 +83,22 @@ Future's coming much too slow"
         </div>
       </label>
 
+      <!-- BPM tap tempo -->
+      <div class="bpm-row">
+        <span class="bpm-label">BPM</span>
+        <button type="button" class="btn-tap" @click="tap">Tap</button>
+        <input
+          v-model.number="form.bpm"
+          type="number"
+          class="bpm-input"
+          min="20"
+          max="300"
+          placeholder="—"
+        />
+        <button v-if="form.bpm" type="button" class="btn-lrc-clear" @click="form.bpm = null">✕</button>
+        <span class="hint" style="text-transform:none;letter-spacing:0">Used when no sync data</span>
+      </div>
+
       <div class="chord-suggest">
         <button type="button" class="btn-suggest btn-lyrics" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
           {{ loadingLyrics ? 'Researching…' : '🤖 AI fetch (beta)' }}
@@ -118,7 +134,7 @@ const store = useSongsStore()
 
 const isNew = computed(() => route.params.id === undefined)
 
-const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null })
+const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null, bpm: null })
 const pasteText = ref('')
 const loadingLyrics = ref(false)
 const chordError = ref('')
@@ -131,6 +147,21 @@ watch(youtubeUrlInput, (url) => {
   const m = url.match(/(?:youtu\.be\/|[?&]v=)([\w-]{11})/)
   form.value.youtubeId = m ? m[1] : null
 })
+
+// BPM tap tempo
+let tapTimes = []
+let tapTimer = null
+function tap() {
+  const now = Date.now()
+  tapTimes.push(now)
+  clearTimeout(tapTimer)
+  tapTimer = setTimeout(() => { tapTimes = [] }, 3000)
+  if (tapTimes.length >= 2) {
+    const intervals = tapTimes.slice(1).map((t, i) => t - tapTimes[i])
+    const avg = intervals.reduce((a, b) => a + b, 0) / intervals.length
+    form.value.bpm = Math.round(60000 / avg)
+  }
+}
 
 function formatPaste() {
   if (!pasteText.value.trim()) return
@@ -219,7 +250,7 @@ onMounted(() => {
   if (!isNew.value) {
     const song = store.getSong(route.params.id)
     if (song) {
-      form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null }
+      form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null, bpm: song.bpm ?? null }
       if (song.youtubeId) youtubeUrlInput.value = `https://www.youtube.com/watch?v=${song.youtubeId}`
     }
     else router.replace('/')
@@ -522,6 +553,39 @@ textarea {
 .lrc-ok   { font-size: 0.8rem; color: #4caf50; text-transform: none; letter-spacing: 0; }
 .lrc-warn { font-size: 0.8rem; color: #ff9800; text-transform: none; letter-spacing: 0; }
 .lrc-err  { font-size: 0.8rem; color: #e94560; text-transform: none; letter-spacing: 0; }
+
+.bpm-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.bpm-label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.btn-tap {
+  background: var(--accent2);
+  color: var(--text);
+  border: none;
+  border-radius: var(--radius);
+  padding: 0.5rem 0.9rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+.bpm-input {
+  width: 5rem;
+  text-align: center;
+  background: var(--bg-card);
+  border: 1px solid #333;
+  border-radius: var(--radius);
+  color: var(--text);
+  padding: 0.5rem;
+  font-size: 1rem;
+}
 
 .yt-input-row {
   display: flex;
