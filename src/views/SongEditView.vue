@@ -68,9 +68,13 @@
             rows="8"
             spellcheck="false"
           ></textarea>
-          <button type="button" class="btn-secondary" :disabled="!pasteText.trim()" @click="formatPaste">
-            Format &amp; import
-          </button>
+          <div class="format-row">
+            <button type="button" class="btn-secondary" :disabled="!pasteText.trim()" @click="formatPaste">
+              Format &amp; import
+            </button>
+            <span v-if="checking" class="check-status">AI checking...</span>
+            <span v-if="checkError" class="check-error">{{ checkError }}</span>
+          </div>
         </div>
       </details>
 
@@ -141,6 +145,8 @@ const isNew = computed(() => route.params.id === undefined)
 
 const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null, bpm: null })
 const pasteText = ref('')
+const checking = ref(false)
+const checkError = ref('')
 const loadingLyrics = ref(false)
 const chordError = ref('')
 const loadingPhase = ref('')
@@ -212,10 +218,30 @@ function tap() {
   }
 }
 
-function formatPaste() {
+async function formatPaste() {
   if (!pasteText.value.trim()) return
   form.value.content = parseTabText(pasteText.value)
   pasteText.value = ''
+  aiCheckFormat(form.value.content)
+}
+
+async function aiCheckFormat(content) {
+  checking.value = true
+  checkError.value = ''
+  try {
+    const res = await fetch('/api/chords', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    })
+    if (!res.ok) return
+    const data = await res.json()
+    if (data.content) form.value.content = data.content
+  } catch {
+    checkError.value = 'AI check failed — using formatted output as-is'
+  } finally {
+    checking.value = false
+  }
 }
 
 const LOADING_PHASES = [
@@ -616,5 +642,19 @@ details[open] .collapsible-header::before { transform: rotate(90deg); }
   font-size: 1rem;
   display: flex;
   align-items: center;
+}
+
+.format-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.check-status {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.check-error {
+  font-size: 0.8rem;
+  color: var(--accent);
 }
 </style>
