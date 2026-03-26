@@ -183,6 +183,24 @@ app.delete('/api/setlists', async (req, res) => {
   res.json({ ok: true })
 })
 
+// ── AI title parse endpoint ──────────────────────────────────────────────────
+app.get('/api/parse-title', async (req, res) => {
+  const { raw } = req.query
+  if (!raw) return res.status(400).json({ error: 'raw is required' })
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return res.status(500).json({ error: 'no key' })
+  try {
+    const client = new OpenAI({ apiKey })
+    const completion = await client.chat.completions.create({
+      model: 'gpt-4o-mini',
+      max_tokens: 60,
+      messages: [{ role: 'user', content: `Extract artist and song title from this YouTube video title. Return only JSON: {"artist":"...","title":"..."}\n\n"${raw}"` }]
+    })
+    const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}')
+    res.json(parsed)
+  } catch { res.status(500).json({ error: 'parse failed' }) }
+})
+
 // ── AI chord/lyrics endpoint ─────────────────────────────────────────────────
 const CHORD_PROMPT = (title, artist) =>
   `You are a guitar chord assistant for simple strumming songs (country, folk, pop). Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
