@@ -143,10 +143,38 @@ const lrcStatus = ref('idle') // 'idle' | 'loading' | 'found' | 'not_found' | 'e
 const lrcMeta = ref(null) // { albumName, duration } from LRCLIB — helps find the right YT video
 const youtubeUrlInput = ref('')
 
-watch(youtubeUrlInput, (url) => {
+watch(youtubeUrlInput, async (url) => {
   const m = url.match(/(?:youtu\.be\/|[?&]v=)([\w-]{11})/)
-  form.value.youtubeId = m ? m[1] : null
+  const videoId = m ? m[1] : null
+  form.value.youtubeId = videoId
+  if (!videoId) return
+
+  // Auto-fill title/artist from YouTube video title if fields are empty
+  try {
+    const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${videoId}&format=json`)
+    if (!res.ok) return
+    const { title } = await res.json()
+    const parsed = parseYouTubeTitle(title)
+    if (!form.value.title) form.value.title = parsed.title
+    if (!form.value.artist) form.value.artist = parsed.artist
+  } catch { /* silent */ }
 })
+
+function parseYouTubeTitle(raw) {
+  // Strip common suffixes: (Official Video), (Lyrics), [HD], etc.
+  const clean = raw
+    .replace(/\s*[\[(](?:official\s*(?:video|music\s*video|audio|lyric\s*video)?|lyrics?|hd|4k|live|audio|visualizer)[^\])]*/gi, '')
+    .replace(/\s*\|.*$/, '')   // strip " | Artist Name" suffix
+    .trim()
+
+  // Most music titles: "Artist - Song" or "Song - Artist"
+  const parts = clean.split(/\s+[-–—]\s+/)
+  if (parts.length >= 2) {
+    return { artist: parts[0].trim(), title: parts.slice(1).join(' - ').trim() }
+  }
+  // Fallback: use full title as song name
+  return { artist: '', title: clean }
+}
 
 // BPM tap tempo
 let tapTimes = []
