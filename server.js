@@ -1,15 +1,41 @@
 import express from 'express'
-import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import OpenAI from 'openai'
+import { createClient } from '@supabase/supabase-js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3000
 
-const SONGS_FILE = path.resolve(__dirname, 'songs.json')
 const PASSWORD = process.env.SITE_PASSWORD || null
+
+// ── Supabase ─────────────────────────────────────────────────────────────────
+const supabase = createClient(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_KEY
+)
+
+function rowToSong(row) {
+  return {
+    id: row.id,
+    title: row.title ?? '',
+    artist: row.artist ?? '',
+    content: row.content ?? '',
+    syncedLyrics: row.synced_lyrics ?? null,
+    youtubeId: row.youtube_id ?? null
+  }
+}
+
+function songToRow(song) {
+  return {
+    title: song.title ?? '',
+    artist: song.artist ?? '',
+    content: song.content ?? '',
+    synced_lyrics: song.syncedLyrics ?? null,
+    youtube_id: song.youtubeId ?? null
+  }
+}
 
 // ── Password protection ─────────────────────────────────────────────────────
 // Simple cookie-based gate. Set SITE_PASSWORD env var to enable.
@@ -91,38 +117,35 @@ if (PASSWORD) {
 app.use(express.json())
 
 // ── Songs CRUD ──────────────────────────────────────────────────────────────
-function readSongs() {
-  try { return JSON.parse(fs.readFileSync(SONGS_FILE, 'utf-8')) } catch { return [] }
-}
-function writeSongs(songs) {
-  fs.writeFileSync(SONGS_FILE, JSON.stringify(songs, null, 2))
-}
-
-app.get('/api/songs', (_req, res) => res.json(readSongs()))
-
-app.post('/api/songs', (req, res) => {
-  const songs = readSongs()
-  const song = { ...req.body, id: Date.now().toString() }
-  songs.push(song)
-  writeSongs(songs)
-  res.status(201).json(song)
+app.get('/api/songs', async (_req, res) => {
+  const { data, error } = await supabase.from('songs').select('*').order('created_at')
+  if (error) return res.status(500).json({ error: error.message })
+  res.json(data.map(rowToSong))
 })
 
-app.put('/api/songs', (req, res) => {
-  const id = req.query.id
-  if (!id) return res.status(400).json({ error: 'id is required' })
-  const songs = readSongs()
-  const idx = songs.findIndex(s => s.id === id)
-  if (idx === -1) return res.status(404).json({ error: 'song not found' })
-  songs[idx] = { ...songs[idx], ...req.body, id }
-  writeSongs(songs)
-  res.json(songs[idx])
+app.post('/api/songs', async (req, res) => {
+  const id = Date.now().toString()
+  const { data, error } = await supabase
+    .from('songs').insert({ id, ...songToRow(req.body) }).select().single()
+  if (error) return res.status(500).json({ error: error.message })
+  res.status(201).json(rowToSong(data))
 })
 
-app.delete('/api/songs', (req, res) => {
+app.put('/api/songs', async (req, res) => {
   const id = req.query.id
   if (!id) return res.status(400).json({ error: 'id is required' })
-  writeSongs(readSongs().filter(s => s.id !== id))
+  const { data, error } = await supabase
+    .from('songs').update(songToRow(req.body)).eq('id', id).select().single()
+  if (error) return res.status(500).json({ error: error.message })
+  if (!data) return res.status(404).json({ error: 'song not found' })
+  res.json(rowToSong(data))
+})
+
+app.delete('/api/songs', async (req, res) => {
+  const id = req.query.id
+  if (!id) return res.status(400).json({ error: 'id is required' })
+  const { error } = await supabase.from('songs').delete().eq('id', id)
+  if (error) return res.status(500).json({ error: error.message })
   res.json({ ok: true })
 })
 

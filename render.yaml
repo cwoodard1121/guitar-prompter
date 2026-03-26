@@ -9,4 +9,8 @@ services:
         sync: false        # set manually in Render dashboard
       - key: SITE_PASSWORD
         sync: false        # set manually in Render dashboard
+      - key: SUPABASE_URL
+        sync: false        # set manually in Render dashboard
+      - key: SUPABASE_KEY
+        sync: false        # set manually in Render dashboard
     plan: free
