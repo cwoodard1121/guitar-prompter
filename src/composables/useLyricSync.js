@@ -5,13 +5,18 @@ const CHUNK_MS        = 5000
 // Rolling transcript window: how many recent chunks to keep joined for matching
 const TRANSCRIPT_KEEP = 3
 // How far (seconds) from current position we search for a lyric match
-const SEARCH_WINDOW   = 90
-// Minimum Jaccard-like score to consider a match valid
-const MATCH_THRESHOLD = 0.25
+// Keep tight: too wide and repeated chorus lines match the wrong occurrence
+const SEARCH_WINDOW   = 20
+// Minimum score to show a match in the UI (low — just for display)
+const DISPLAY_THRESHOLD = 0.20
+// Minimum score to trigger an auto-seek correction (high — must be very confident)
+const SEEK_THRESHOLD    = 0.65
 // Don't auto-seek unless matched line is at least this far from current position
-const MIN_SEEK_DELTA  = 3.0
+const MIN_SEEK_DELTA    = 4.0
 // Don't fire corrections faster than this (seconds)
-const CORRECTION_COOLDOWN = 10
+const CORRECTION_COOLDOWN = 15
+// Require this many consecutive chunks agreeing on the same line before seeking
+const SEEK_CONFIRM_COUNT  = 2
 
 function normalize(text) {
   return text
@@ -111,18 +116,24 @@ export function useLyricSync(lrcLines, currentElapsed) {
   const lyricActive    = ref(false)
   const lastTranscript = ref('')          // most recent chunk text from Whisper
   const matchedLine    = ref(null)        // { idx, text, time, score } or null
-  const suggestedSeek  = ref(null)        // seconds to seek to, or null
+  const suggestedSeek  = ref(null)        // seconds to seek to (drift correction), or null
+  const initialSeek    = ref(null)        // first-lock seek: starts the clock from here
+  const lyricLocked    = ref(false)       // true once initial lock has fired
   const debugInfo      = ref({ chunksSent: 0, lastScore: 0, lastDelta: 0, error: '' })
 
   let stream          = null
   let recorder        = null
   let chunkTimer      = null
-  let transcriptBuf   = []              // rolling array of recent transcript strings
+  let transcriptBuf    = []              // rolling array of recent transcript strings
   let lastCorrectionAt = -Infinity
+  let confirmIdx       = -1             // line idx that is building confirmation streak
+  let confirmCount     = 0              // how many consecutive chunks matched confirmIdx
+  let initialLocked    = false          // true once we've fired the first-lock seek
 
   // ── Transcription ──────────────────────────────────────────────────────────
-  async function sendChunk(blob) {
+  async function sendChunk(blob, chunkStartedAt) {
     debugInfo.value.chunksSent++
+    const fetchStart = performance.now()
     try {
       const base64 = await blobToBase64(blob)
       const res = await fetch('/api/transcribe', {
@@ -134,23 +145,33 @@ export function useLyricSync(lrcLines, currentElapsed) {
       const { text } = await res.json()
       if (!text?.trim()) return
 
+      // Latency: how long since the middle of the chunk was recorded
+      // midpoint of chunk = chunkStartedAt + CHUNK_MS/2
+      // round-trip API delay = performance.now() - fetchStart
+      const audioMidpointAge = (performance.now() - chunkStartedAt - CHUNK_MS / 2) / 1000
+      const apiDelay         = (performance.now() - fetchStart) / 1000
+      const totalLatency     = audioMidpointAge  // seconds of audio age at time of match
+
       lastTranscript.value = text.trim()
       transcriptBuf.push(text)
       if (transcriptBuf.length > TRANSCRIPT_KEEP) transcriptBuf.shift()
 
-      matchAgainstLyrics()
+      matchAgainstLyrics(totalLatency)
     } catch (err) {
       debugInfo.value.error = err.message
     }
   }
 
   // ── Matching ───────────────────────────────────────────────────────────────
-  function matchAgainstLyrics() {
+  function matchAgainstLyrics(audioAge = 0) {
     const lines = typeof lrcLines?.value !== 'undefined' ? lrcLines.value : lrcLines
     if (!lines?.length) return
 
-    const elapsed = typeof currentElapsed?.value !== 'undefined'
+    // currentElapsed is where the scroll is RIGHT NOW, but the audio we transcribed
+    // was from ~audioAge seconds ago — so we search around where we were then
+    const nowElapsed = typeof currentElapsed?.value !== 'undefined'
       ? currentElapsed.value : currentElapsed
+    const elapsed = nowElapsed - audioAge
 
     // Combine rolling transcript buffer into one normalized word list
     const transcriptWords = normalize(transcriptBuf.join(' '))
@@ -184,23 +205,47 @@ export function useLyricSync(lrcLines, currentElapsed) {
 
     debugInfo.value.lastScore = +bestScore.toFixed(3)
 
-    if (bestScore >= MATCH_THRESHOLD && bestIdx !== -1) {
+    if (bestScore >= DISPLAY_THRESHOLD && bestIdx !== -1) {
       const line = lines[bestIdx]
+      // Seek target: matched line time + audio latency = where we should be right now
+      const seekTarget = line.time + audioAge
       matchedLine.value = { idx: bestIdx, text: line.text, time: line.time, score: bestScore }
 
-      const delta = line.time - elapsed
+      // delta vs current position (after latency correction)
+      const delta = seekTarget - nowElapsed
       debugInfo.value.lastDelta = +delta.toFixed(1)
 
+      // Confirmation streak: only seek if the same line wins SEEK_CONFIRM_COUNT times in a row
+      if (bestIdx === confirmIdx) {
+        confirmCount++
+      } else {
+        confirmIdx   = bestIdx
+        confirmCount = 1
+      }
+
       const now = Date.now() / 1000
-      if (
-        Math.abs(delta) >= MIN_SEEK_DELTA &&
-        now - lastCorrectionAt > CORRECTION_COOLDOWN
-      ) {
-        suggestedSeek.value = line.time
-        lastCorrectionAt = now
+      if (bestScore >= SEEK_THRESHOLD && confirmCount >= SEEK_CONFIRM_COUNT) {
+        if (!initialLocked) {
+          // First confident lock — start the clock from this position
+          initialSeek.value  = seekTarget
+          initialLocked      = true
+          lyricLocked.value  = true
+          lastCorrectionAt  = now
+          confirmCount      = 0
+        } else if (
+          Math.abs(delta) >= MIN_SEEK_DELTA &&
+          now - lastCorrectionAt > CORRECTION_COOLDOWN
+        ) {
+          // Subsequent drift correction — only nudge if meaningfully off
+          suggestedSeek.value = seekTarget
+          lastCorrectionAt    = now
+          confirmCount        = 0
+        }
       }
     } else {
       matchedLine.value = null
+      confirmIdx   = -1
+      confirmCount = 0
     }
   }
 
@@ -216,9 +261,10 @@ export function useLyricSync(lrcLines, currentElapsed) {
 
     recorder = new MediaRecorder(stream, { mimeType })
     const chunks = []
+    const chunkStartedAt = performance.now()   // wall-clock when recording began
     recorder.ondataavailable = e => { if (e.data?.size > 0) chunks.push(e.data) }
     recorder.onstop = () => {
-      if (chunks.length) sendChunk(new Blob(chunks, { type: mimeType }))
+      if (chunks.length) sendChunk(new Blob(chunks, { type: mimeType }), chunkStartedAt)
     }
     recorder.start()
     chunkTimer = setTimeout(() => {
@@ -232,8 +278,13 @@ export function useLyricSync(lrcLines, currentElapsed) {
     stream = mediaStream
     transcriptBuf = []
     lastCorrectionAt = -Infinity
-    matchedLine.value = null
+    confirmIdx    = -1
+    confirmCount  = 0
+    initialLocked      = false
+    lyricLocked.value  = false
+    matchedLine.value   = null
     suggestedSeek.value = null
+    initialSeek.value   = null
     debugInfo.value = { chunksSent: 0, lastScore: 0, lastDelta: 0, error: '' }
     lyricActive.value = true
     startChunk()
@@ -266,10 +317,13 @@ export function useLyricSync(lrcLines, currentElapsed) {
     if (recorder?.state === 'recording') recorder.stop()
     if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null }
     recorder = null
-    matchedLine.value = null
+    matchedLine.value   = null
     suggestedSeek.value = null
+    initialSeek.value   = null
     lastTranscript.value = ''
     transcriptBuf = []
+    initialLocked     = false
+    lyricLocked.value = false
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
@@ -293,10 +347,12 @@ export function useLyricSync(lrcLines, currentElapsed) {
     startWithFile,
     stopLyricSync,
     lyricActive,
+    lyricLocked,
     lastTranscript,
     matchedLine,
     matchConfidence,
     suggestedSeek,
+    initialSeek,
     debugInfo,
   }
 }

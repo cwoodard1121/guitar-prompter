@@ -144,35 +144,42 @@
     <!-- Lyric sync status bar -->
     <div v-if="lyricSyncMode || isDev" class="lyric-status-bar">
       <span class="lyric-dot" :class="{ active: lyricActive }"></span>
-      <span class="lyric-label">{{ lyricActive ? 'Listening' : 'Starting…' }}</span>
+      <span class="lyric-label" :class="{ 'lyric-locked': lyricLocked }">{{ lyricActive ? (lyricLocked ? '🔒 Whisper' : 'Whisper') : 'Starting…' }}</span>
+
+      <!-- Heard → matched line -->
       <template v-if="matchedLine">
-        <span class="lyric-sep">·</span>
-        <span class="lyric-heard">"{{ lastTranscript.slice(0, 40) }}"</span>
+        <span class="lyric-sep">heard:</span>
+        <span class="lyric-heard">"{{ lastTranscript.slice(0, 35) }}"</span>
         <span class="lyric-sep">→</span>
-        <span class="lyric-match" :class="confClass">{{ matchConfidence }}% match</span>
+        <span class="lyric-matched-text">"{{ matchedLine.text.replace(/\[.*?\]/g,'').trim().slice(0,35) }}"</span>
+        <span class="lyric-conf" :class="confClass">{{ matchConfidence }}%</span>
       </template>
       <template v-else-if="lyricActive && lastTranscript">
-        <span class="lyric-sep">·</span>
-        <span class="lyric-heard">"{{ lastTranscript.slice(0, 50) }}"</span>
-        <span class="lyric-sep">·</span>
-        <span class="lyric-no-match">no match</span>
+        <span class="lyric-sep">heard:</span>
+        <span class="lyric-heard">"{{ lastTranscript.slice(0, 45) }}"</span>
+        <span class="lyric-sep">—</span>
+        <span class="lyric-no-match">no lyric match</span>
       </template>
       <template v-else-if="lyricActive">
         <span class="lyric-sep">·</span>
         <span class="lyric-waiting">waiting for audio…</span>
       </template>
+
+      <!-- Dev extras -->
       <template v-if="isDev">
         <span class="lyric-sep">·</span>
         <label class="lyric-file-label">📁 test file<input type="file" accept="audio/*" class="lyric-file-input" @change="e => { lyricSyncMode = true; startLyricWithFile(e.target.files[0]) }" /></label>
         <template v-if="lyricActive">
           <span class="lyric-sep">·</span>
-          <span class="lyric-debug">score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s chunks:{{ lyricDebug.chunksSent }}</span>
+          <span class="lyric-debug">chunks:{{ lyricDebug.chunksSent }} score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s</span>
           <span v-if="lyricDebug.error" class="lyric-error"> {{ lyricDebug.error }}</span>
         </template>
       </template>
     </div>
     <!-- Seek-correction flash -->
-    <div v-if="seekFlash" class="seek-flash">↵ synced</div>
+    <div v-if="seekFlash" class="seek-flash" :class="'flash-' + seekFlash">
+      {{ seekFlash === 'locked' ? '🔒 locked in' : '↵ corrected' }}
+    </div>
 
     <!-- Song position dots (above play bar, sync mode only) -->
     <div v-if="syncMode" class="tp-seek-bar" @click="seekByClick" @touchstart.passive="onSeekTouchStart" @touchend="seekByTouch">
@@ -702,11 +709,11 @@ function handleKeydown(e) {
 // --- Lyric sync (Whisper-based position correction) ---
 const isDev = import.meta.env.DEV
 const lyricSyncMode = ref(false)
-const seekFlash = ref(false)
+const seekFlash = ref('')   // '' | 'locked' | 'corrected'
 
 const {
   startLyricSync, startWithFile: startLyricWithFile, stopLyricSync,
-  lyricActive, lastTranscript, matchedLine, matchConfidence, suggestedSeek,
+  lyricActive, lyricLocked, lastTranscript, matchedLine, matchConfidence, suggestedSeek, initialSeek,
   debugInfo: lyricDebug,
 } = useLyricSync(lrcLines, elapsed)
 
@@ -717,19 +724,40 @@ const confClass = computed(() => {
   return 'conf-low'
 })
 
-// When the composable suggests a seek position, apply it
-watch(suggestedSeek, (targetTime) => {
-  if (targetTime === null) return
-  suggestedSeek.value = null  // consume it
+function applySeek(targetTime) {
   if (ytPlayer && ytReady.value) {
     ytPlayer.seekTo(targetTime, true)
   } else {
     playStartTime.value = performance.now() - targetTime * 1000
     elapsed.value = targetTime
   }
-  // Flash feedback
-  seekFlash.value = true
-  setTimeout(() => { seekFlash.value = false }, 1200)
+}
+
+function showFlash(type) {
+  seekFlash.value = type
+  setTimeout(() => { seekFlash.value = '' }, type === 'locked' ? 1800 : 1200)
+}
+
+// First confident lyric lock — seek there and start the clock rolling
+watch(initialSeek, (targetTime) => {
+  if (targetTime === null) return
+  initialSeek.value = null  // consume
+  applySeek(targetTime)
+  // Start scroll/sync if not already running
+  if (!scrolling.value) {
+    syncEnabled.value = true
+    playStartTime.value = performance.now() - targetTime * 1000
+    scrolling.value = true
+  }
+  showFlash('locked')
+})
+
+// Subsequent drift corrections — only when noticeably off
+watch(suggestedSeek, (targetTime) => {
+  if (targetTime === null) return
+  suggestedSeek.value = null  // consume it
+  applySeek(targetTime)
+  showFlash('corrected')
 })
 
 async function toggleLyricSync() {
@@ -1180,6 +1208,7 @@ onUnmounted(() => {
 }
 
 .lyric-label  { color: #888; }
+.lyric-locked { color: #4caf50; }
 .lyric-sep    { color: #444; }
 .lyric-heard  { color: #ccc; font-style: italic; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .lyric-match  { font-weight: 600; }
@@ -1198,7 +1227,6 @@ onUnmounted(() => {
   position: fixed;
   top: 50%; left: 50%;
   transform: translate(-50%, -50%);
-  background: rgba(100, 181, 246, 0.9);
   color: #000;
   font-weight: 700;
   font-size: 1.1rem;
@@ -1208,6 +1236,8 @@ onUnmounted(() => {
   z-index: 200;
   animation: flash-fade 1.2s ease forwards;
 }
+.flash-locked    { background: rgba(76, 175, 80, 0.92); animation-duration: 1.8s; }
+.flash-corrected { background: rgba(100, 181, 246, 0.9); }
 @keyframes flash-fade {
   0%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
   70%  { opacity: 1; }
