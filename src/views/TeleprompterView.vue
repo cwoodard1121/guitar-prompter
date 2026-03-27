@@ -136,7 +136,39 @@
       <button v-if="!syncMode" class="ctrl-btn catchup-btn" @click="catchUp">
         ⏩
       </button>
+      <button v-if="hasSync" class="ctrl-btn lyric-sync-btn" :class="{ active: lyricSyncMode }" @click="toggleLyricSync" title="Lyric position sync (Whisper)">
+        🎙
+      </button>
     </div>
+
+    <!-- Lyric sync status bar -->
+    <div v-if="lyricSyncMode" class="lyric-status-bar">
+      <span class="lyric-dot" :class="{ active: lyricActive }"></span>
+      <span class="lyric-label">{{ lyricActive ? 'Listening' : 'Starting…' }}</span>
+      <template v-if="matchedLine">
+        <span class="lyric-sep">·</span>
+        <span class="lyric-heard">"{{ lastTranscript.slice(0, 40) }}"</span>
+        <span class="lyric-sep">→</span>
+        <span class="lyric-match" :class="confClass">{{ matchConfidence }}% match</span>
+      </template>
+      <template v-else-if="lyricActive && lastTranscript">
+        <span class="lyric-sep">·</span>
+        <span class="lyric-heard">"{{ lastTranscript.slice(0, 50) }}"</span>
+        <span class="lyric-sep">·</span>
+        <span class="lyric-no-match">no match</span>
+      </template>
+      <template v-else-if="lyricActive">
+        <span class="lyric-sep">·</span>
+        <span class="lyric-waiting">waiting for audio…</span>
+      </template>
+      <template v-if="isDev && lyricActive">
+        <span class="lyric-sep">·</span>
+        <span class="lyric-debug">score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s chunks:{{ lyricDebug.chunksSent }}</span>
+        <span v-if="lyricDebug.error" class="lyric-error">{{ lyricDebug.error }}</span>
+      </template>
+    </div>
+    <!-- Seek-correction flash -->
+    <div v-if="seekFlash" class="seek-flash">↵ synced</div>
 
     <!-- Song position dots (above play bar, sync mode only) -->
     <div v-if="syncMode" class="tp-seek-bar" @click="seekByClick" @touchstart.passive="onSeekTouchStart" @touchend="seekByTouch">
@@ -168,6 +200,7 @@ import { useSetlistsStore } from '../stores/setlists.js'
 import ChordDiagram from '../components/ChordDiagram.vue'
 import { extractChordNames, getChord, transposeChord, transposeContent } from '../data/chords.js'
 import { parseLrc, matchLrcToLines } from '../utils/parseLrc.js'
+import { useLyricSync } from '../composables/useLyricSync.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -662,12 +695,57 @@ function handleKeydown(e) {
   }
 }
 
+// --- Lyric sync (Whisper-based position correction) ---
+const isDev = import.meta.env.DEV
+const lyricSyncMode = ref(false)
+const seekFlash = ref(false)
+
+const {
+  startLyricSync, stopLyricSync,
+  lyricActive, lastTranscript, matchedLine, matchConfidence, suggestedSeek,
+  debugInfo: lyricDebug,
+} = useLyricSync(lrcLines, elapsed)
+
+const confClass = computed(() => {
+  const c = matchConfidence.value
+  if (c >= 65) return 'conf-high'
+  if (c >= 35) return 'conf-mid'
+  return 'conf-low'
+})
+
+// When the composable suggests a seek position, apply it
+watch(suggestedSeek, (targetTime) => {
+  if (targetTime === null) return
+  suggestedSeek.value = null  // consume it
+  if (ytPlayer && ytReady.value) {
+    ytPlayer.seekTo(targetTime, true)
+  } else {
+    playStartTime.value = performance.now() - targetTime * 1000
+    elapsed.value = targetTime
+  }
+  // Flash feedback
+  seekFlash.value = true
+  setTimeout(() => { seekFlash.value = false }, 1200)
+})
+
+async function toggleLyricSync() {
+  if (lyricSyncMode.value) {
+    lyricSyncMode.value = false
+    stopLyricSync()
+  } else {
+    lyricSyncMode.value = true
+    syncEnabled.value = true
+    await startLyricSync()
+  }
+}
+
 onMounted(() => { window.addEventListener('keydown', handleKeydown) })
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   if (rafId) cancelAnimationFrame(rafId)
   stopSyncTick()
+  stopLyricSync()
   if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null }
 })
 </script>
@@ -1059,5 +1137,74 @@ onUnmounted(() => {
 }
 .tp-seek-dot.active {
   background: rgba(255,255,255,0.7);
+}
+
+/* ── Lyric sync ─────────────────────────────────────────────────────────── */
+.lyric-sync-btn.active { color: #64b5f6; border-color: #64b5f6; }
+
+.lyric-status-bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 3.5rem);
+  left: 0; right: 0;
+  background: rgba(0,0,0,0.72);
+  backdrop-filter: blur(4px);
+  padding: 0.35rem 1rem;
+  font-size: 0.75rem;
+  color: #aaa;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  z-index: 40;
+  pointer-events: none;
+}
+
+.lyric-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+  transition: background 0.3s;
+}
+.lyric-dot.active {
+  background: #64b5f6;
+  animation: lyric-pulse 2s ease-in-out infinite;
+}
+@keyframes lyric-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+.lyric-label  { color: #888; }
+.lyric-sep    { color: #444; }
+.lyric-heard  { color: #ccc; font-style: italic; max-width: 50vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lyric-match  { font-weight: 600; }
+.lyric-waiting { color: #555; font-style: italic; }
+.lyric-no-match { color: #e94560; }
+.lyric-debug  { font-family: monospace; font-size: 0.68rem; color: #555; }
+.lyric-error  { color: #e94560; font-size: 0.68rem; }
+
+.conf-high { color: #4caf50; }
+.conf-mid  { color: #ff9800; }
+.conf-low  { color: #e94560; }
+
+.seek-flash {
+  position: fixed;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(100, 181, 246, 0.9);
+  color: #000;
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 0.5rem 1.2rem;
+  border-radius: 10px;
+  pointer-events: none;
+  z-index: 200;
+  animation: flash-fade 1.2s ease forwards;
+}
+@keyframes flash-fade {
+  0%   { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+  70%  { opacity: 1; }
+  100% { opacity: 0; transform: translate(-50%, -60%) scale(0.9); }
 }
 </style>

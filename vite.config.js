@@ -1,7 +1,7 @@
 import { defineConfig, loadEnv } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { VitePWA } from 'vite-plugin-pwa'
-import OpenAI from 'openai'
+import OpenAI, { toFile } from 'openai'
 import fs from 'fs'
 import path from 'path'
 
@@ -112,6 +112,41 @@ function apiMiddlewarePlugin(env) {
   return {
     name: 'api-middleware',
     configureServer(server) {
+      server.middlewares.use('/api/transcribe', async (req, res) => {
+        const send = (code, data) => {
+          res.statusCode = code
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(data))
+        }
+        if (req.method !== 'POST') return send(405, { error: 'method not allowed' })
+
+        const apiKey = env.OPENAI_API_KEY
+        if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
+
+        let body = ''
+        await new Promise((resolve, reject) => {
+          req.on('data', chunk => { body += chunk })
+          req.on('end', resolve)
+          req.on('error', reject)
+        })
+
+        let parsed
+        try { parsed = JSON.parse(body) } catch { return send(400, { error: 'Invalid JSON' }) }
+        const { audio, mimeType } = parsed || {}
+        if (!audio) return send(400, { error: 'audio is required' })
+
+        try {
+          const buffer = Buffer.from(audio, 'base64')
+          const ext    = mimeType?.includes('mp4') ? 'mp4' : 'webm'
+          const file   = await toFile(buffer, `chunk.${ext}`, { type: mimeType || 'audio/webm' })
+          const client = new OpenAI({ apiKey })
+          const result = await client.audio.transcriptions.create({ model: 'whisper-1', file })
+          return send(200, { text: result.text || '' })
+        } catch (err) {
+          return send(500, { error: err.message })
+        }
+      })
+
       server.middlewares.use('/api/chords', async (req, res) => {
         const send = (code, data) => {
           res.statusCode = code

@@ -1,7 +1,7 @@
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import OpenAI from 'openai'
+import OpenAI, { toFile } from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -204,6 +204,26 @@ app.get('/api/parse-title', async (req, res) => {
     const parsed = JSON.parse(completion.choices[0]?.message?.content || '{}')
     res.json(parsed)
   } catch { res.status(500).json({ error: 'parse failed' }) }
+})
+
+// ── Whisper transcription endpoint ──────────────────────────────────────────
+app.post('/api/transcribe', async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return res.status(500).json({ error: 'no key' })
+
+  const { audio, mimeType } = req.body
+  if (!audio) return res.status(400).json({ error: 'audio is required' })
+
+  try {
+    const buffer = Buffer.from(audio, 'base64')
+    const ext    = mimeType?.includes('mp4') ? 'mp4' : 'webm'
+    const file   = await toFile(buffer, `chunk.${ext}`, { type: mimeType || 'audio/webm' })
+    const client = new OpenAI({ apiKey })
+    const result = await client.audio.transcriptions.create({ model: 'whisper-1', file })
+    res.json({ text: result.text || '' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
 })
 
 // ── AI chord/lyrics endpoint ─────────────────────────────────────────────────
