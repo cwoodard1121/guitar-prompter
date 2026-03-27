@@ -404,7 +404,7 @@ const lineTimings = computed(() =>
 const hasSync = computed(() => lineTimings.value.some(t => t !== null))
 const hasBpm = computed(() => !hasSync.value && !!song.value?.bpm)
 const syncMode = computed(() =>
-  ((hasSync.value || hasBpm.value) && syncEnabled.value) || lyricSyncMode.value
+  (hasSync.value || hasBpm.value) && syncEnabled.value
 )
 
 // BPM mode: build synthetic timings from beat clock
@@ -519,11 +519,7 @@ let syncRafId = null
 function startSyncTick() {
   if (syncRafId) return
   function tick(now) {
-    // Keep ticking as long as syncMode is active OR wall-clock scroll is live
-    // (handles transition out of lyricSyncMode after a lock has been established)
-    if (!syncMode.value && !(scrolling.value && playStartTime.value !== null)) {
-      syncRafId = null; return
-    }
+    if (!syncMode.value) { syncRafId = null; return }
     if (ytPlayer && ytReady.value) {
       elapsed.value = ytPlayer.getCurrentTime() + syncOffset.value
     } else if (scrolling.value && playStartTime.value !== null) {
@@ -748,17 +744,11 @@ function showFlash(type) {
   setTimeout(() => { seekFlash.value = '' }, type === 'locked' ? 1800 : 1200)
 }
 
-// First confident lyric lock — seek YouTube (or wall-clock if no YouTube)
+// First confident lyric lock — correct position
 watch(initialSeek, (targetTime) => {
   if (targetTime === null) return
   initialSeek.value = null  // consume
   applySeek(targetTime)
-  if (!ytPlayer || !ytReady.value) {
-    // No YouTube — start wall-clock scroll if not already running
-    scrolling.value = true
-    stopSyncTick()
-    startSyncTick()
-  }
   showFlash('locked')
 })
 
@@ -774,7 +764,6 @@ async function toggleLyricSync() {
   if (lyricSyncMode.value) {
     lyricSyncMode.value = false
     stopLyricSync()
-    // Don't touch scrolling — YouTube/wall-clock continues uninterrupted
   } else {
     lyricSyncMode.value = true
     await startLyricSync()
