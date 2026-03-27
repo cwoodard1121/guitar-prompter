@@ -5,39 +5,6 @@ import OpenAI from 'openai'
 import fs from 'fs'
 import path from 'path'
 
-const CHORD_PROMPT_WITH_LYRICS = (title, artist, lyrics) =>
-  `You are a guitar chord assistant. Add chord annotations to the lyrics of "${title}"${artist ? ` by ${artist}` : ''}.
-
-Use standard open or barre chord names only (G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc.). No power chords, no tab notation. Use the real chord progression for this song.
-
-Put chord names in [brackets] on lines ABOVE the lyric line they apply to, aligned to the syllable where the chord changes:
-
-[G]           [Cadd9]      [D]
-Here comes the sun        little darling
-[G]           [D]          [Em]
-It's been a long cold lonely winter
-
-Annotate verse 1 and the chorus. Output only the chord/lyric text, no explanations.
-
-Lyrics:
-${lyrics.slice(0, 3000)}`
-
-const CHORD_PROMPT_FALLBACK = (title, artist) =>
-  `You are a guitar chord assistant. Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
-
-Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. No power chords, no tab notation.
-
-Use the real chord progression for the song. For lyric lines write simplified placeholder syllables (da da da, la la la) matching the rhythm — do NOT reproduce copyrighted lyrics.
-
-Format: chord names in [brackets] above the syllable line they apply to:
-
-[G]           [Cadd9]      [D]
-da da-da da   da da-da da  da da
-
-Only output the chord/lyric text, no explanations. Cover one verse and one chorus.`
-
-const CHORD_PROMPT = CHORD_PROMPT_FALLBACK  // used by /api/chords validate path
-
 const VALIDATE_PROMPT = (content) =>
   `You are a guitar chord formatter. The user has pasted a tab and it has been auto-formatted into bracket chord notation. Review it and fix any issues.
 
@@ -179,32 +146,23 @@ function apiMiddlewarePlugin(env) {
         const artist = url.searchParams.get('artist') || ''
         if (!title) return send(400, { error: 'title is required' })
 
-        // Step 1: try to fetch plain lyrics from lrclib
-        let plainLyrics = null
-        try {
-          const params = new URLSearchParams({ artist_name: artist, track_name: title })
-          const lrcRes = await fetch(`https://lrclib.net/api/get?${params}`, {
-            headers: { 'Lrclib-Client': 'guitar-portal/1.0' }
-          })
-          if (lrcRes.ok) {
-            const lrcData = await lrcRes.json()
-            plainLyrics = lrcData.plainLyrics || null
-          }
-        } catch { /* fall through */ }
-
-        const prompt = plainLyrics
-          ? CHORD_PROMPT_WITH_LYRICS(title, artist, plainLyrics)
-          : CHORD_PROMPT_FALLBACK(title, artist)
-
         try {
           const client = new OpenAI({ apiKey })
-          const completion = await client.chat.completions.create({
-            model: 'o4-mini',
-            max_completion_tokens: 4096,
-            reasoning_effort: 'low',
-            messages: [{ role: 'user', content: prompt }]
+          const response = await client.responses.create({
+            model: 'gpt-4o-mini',
+            tools: [{ type: 'web_search_preview', search_context_size: 'low' }],
+            input: `Find the guitar chord chart for "${title}"${artist ? ` by ${artist}` : ''}. Search Ultimate Guitar or a similar tab site for the real chords and lyrics.
+
+Return the result formatted exactly like this — chord names in [brackets] on the line ABOVE the lyric they apply to:
+
+[G]        [C]        [D]
+Here comes the sun little darling
+[Em]       [C]
+It's been a long cold lonely winter
+
+Include verse 1 and the chorus. Return ONLY the formatted chord chart — no markdown, no explanation, no headers.`
           })
-          return send(200, { content: completion.choices[0]?.message?.content || '', hadLyrics: !!plainLyrics })
+          return send(200, { content: response.output_text || '' })
         } catch (err) {
           return send(500, { error: err.message })
         }
@@ -234,11 +192,7 @@ function apiMiddlewarePlugin(env) {
           if (!content) return send(400, { error: 'content is required' })
           prompt = VALIDATE_PROMPT(content)
         } else {
-          const url = new URL(req.url, 'http://localhost')
-          const title = url.searchParams.get('title') || ''
-          const artist = url.searchParams.get('artist') || ''
-          if (!title) return send(400, { error: 'title is required' })
-          prompt = CHORD_PROMPT(title, artist)
+          return send(405, { error: 'method not allowed' })
         }
 
         try {
