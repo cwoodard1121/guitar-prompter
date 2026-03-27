@@ -21,14 +21,90 @@ function normalize(text) {
     .filter(Boolean)
 }
 
-// Jaccard-like word overlap: intersection / union of word sets
-function wordScore(aWords, bWords) {
-  if (!aWords.length || !bWords.length) return 0
-  const setA = new Set(aWords)
-  const setB = new Set(bWords)
-  let intersection = 0
-  for (const w of setA) if (setB.has(w)) intersection++
-  return intersection / (setA.size + setB.size - intersection)
+// ── Phonetic encoding (simplified Metaphone) ─────────────────────────────────
+// Collapses similar-sounding consonants so mishearings still match.
+// e.g. "gonna" → "KN", "going" → "KNK", "love" → "LF", "luv" → "LF"
+function phonetic(word) {
+  let s = word.toLowerCase().replace(/[^a-z]/g, '')
+  if (!s) return ''
+
+  // Common contractions / reductions
+  s = s.replace(/gonna/g, 'going')
+       .replace(/wanna/g, 'want')
+       .replace(/gotta/g, 'got')
+       .replace(/kinda/g, 'kind')
+       .replace(/lotta/g, 'lot')
+       .replace(/outta/g, 'out')
+       .replace(/tryna/g, 'trying')
+
+  // Drop silent initial combos
+  s = s.replace(/^kn/, 'n')
+       .replace(/^wr/, 'r')
+       .replace(/^ae/, 'e')
+       .replace(/^gn/, 'n')
+
+  // Normalise common vowel clusters before encoding
+  s = s.replace(/igh/g, 'i')
+       .replace(/ough/g, 'o')
+       .replace(/augh/g, 'af')
+       .replace(/ph/g, 'f')
+       .replace(/ck/g, 'k')
+       .replace(/qu/g, 'k')
+       .replace(/th/g, '0') // placeholder for th sound
+       .replace(/sh/g, '6')
+       .replace(/ch/g, '6')
+
+  // Map consonants to phonetic class codes
+  s = s.replace(/[bfpv]/g, '1')   // labial
+       .replace(/[cgjkqsxyz]/g, '2') // velar/sibilant
+       .replace(/[dt0]/g, '3')    // dental (incl. th)
+       .replace(/[l]/g, '4')
+       .replace(/[mn]/g, '5')
+       .replace(/[r]/g, '6')
+       .replace(/[6]/g, '7')      // sh/ch group
+       .replace(/[aeiou]/g, '')   // drop all vowels
+       .replace(/h/g, '')         // drop H
+
+  // Collapse runs of same code
+  s = s.replace(/(.)\1+/g, '$1')
+
+  return s
+}
+
+// ── Scoring ───────────────────────────────────────────────────────────────────
+// Jaccard on phonetic codes (set overlap, order-independent)
+function phoneticJaccard(aCodes, bCodes) {
+  if (!aCodes.length || !bCodes.length) return 0
+  const setA = new Set(aCodes)
+  const setB = new Set(bCodes)
+  let inter = 0
+  for (const c of setA) if (setB.has(c)) inter++
+  return inter / (setA.size + setB.size - inter)
+}
+
+// LCS length (dynamic programming) — respects word order
+function lcsLength(a, b) {
+  const m = a.length, n = b.length
+  const dp = new Array(m + 1).fill(null).map(() => new Int16Array(n + 1))
+  for (let i = 1; i <= m; i++)
+    for (let j = 1; j <= n; j++)
+      dp[i][j] = a[i-1] === b[j-1] ? dp[i-1][j-1] + 1 : Math.max(dp[i-1][j], dp[i][j-1])
+  return dp[m][n]
+}
+
+// Combined score: 40% phonetic Jaccard + 60% LCS coverage of the lyric line
+function matchScore(transcriptWords, lineWords) {
+  if (!transcriptWords.length || !lineWords.length) return 0
+  const tCodes = transcriptWords.map(phonetic).filter(Boolean)
+  const lCodes = lineWords.map(phonetic).filter(Boolean)
+  if (!tCodes.length || !lCodes.length) return 0
+
+  const jaccard = phoneticJaccard(tCodes, lCodes)
+  // LCS coverage: how much of the lyric line is covered by the transcript (in order)
+  const lcs     = lcsLength(tCodes, lCodes)
+  const coverage = lcs / lCodes.length
+
+  return jaccard * 0.4 + coverage * 0.6
 }
 
 export function useLyricSync(lrcLines, currentElapsed) {
@@ -94,7 +170,7 @@ export function useLyricSync(lrcLines, currentElapsed) {
       const lineWords = normalize(lineText)
       if (!lineWords.length) continue
 
-      let score = wordScore(transcriptWords, lineWords)
+      let score = matchScore(transcriptWords, lineWords)
 
       // Boost score for lines close to current position (smooth falloff)
       const proximity = Math.max(0, 1 - Math.abs(line.time - elapsed) / SEARCH_WINDOW)
