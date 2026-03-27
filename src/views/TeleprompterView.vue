@@ -152,7 +152,7 @@
         <span class="mic-sep">·</span>
         <span class="mic-waiting">detecting…</span>
       </template>
-      <template v-if="isDev && !micActive">
+      <template v-if="isDev">
         <span class="mic-sep">·</span>
         <label class="mic-file-label">📁 test file<input type="file" accept="audio/*" class="mic-file-input" @change="e => startWithFile(e.target.files[0])" /></label>
       </template>
