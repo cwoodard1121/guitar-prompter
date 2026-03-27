@@ -163,19 +163,19 @@
     <div v-if="isDev && micMode" class="mic-sliders">
       <label class="slider-row">
         <span>freqLow <b>{{ freqLow }}</b> Hz</span>
-        <input type="range" min="500" max="15000" step="100" :value="freqLow" @input="e => { freqLow.value = +e.target.value; recomputeBins() }" />
+        <input type="range" min="500" max="15000" step="100" v-model.number="freqLow" @input="recomputeBins" />
       </label>
       <label class="slider-row">
         <span>freqHigh <b>{{ freqHigh }}</b> Hz</span>
-        <input type="range" min="500" max="20000" step="100" :value="freqHigh" @input="e => { freqHigh.value = +e.target.value; recomputeBins() }" />
+        <input type="range" min="500" max="20000" step="100" v-model.number="freqHigh" @input="recomputeBins" />
       </label>
       <label class="slider-row">
         <span>zThresh <b>{{ zThresh }}</b></span>
-        <input type="range" min="0.5" max="8" step="0.1" :value="zThresh" @input="e => zThresh.value = +e.target.value" />
+        <input type="range" min="0.5" max="8" step="0.1" v-model.number="zThresh" />
       </label>
       <label class="slider-row">
         <span>minInterval <b>{{ minInterval }}</b>s</span>
-        <input type="range" min="0.05" max="1.0" step="0.01" :value="minInterval" @input="e => minInterval.value = +e.target.value" />
+        <input type="range" min="0.05" max="1.0" step="0.01" v-model.number="minInterval" />
       </label>
     </div>
 
