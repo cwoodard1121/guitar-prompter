@@ -9,8 +9,9 @@ const ENERGY_HISTORY = 43       // ~700ms of history at 60fps
 const MIN_ONSET_INTERVAL = 0.18 // 333 BPM max (enough for any real tempo)
 const ONSET_THRESHOLD = 1.35    // spike must be 1.35x rolling average
 const NOISE_FLOOR = 0.008       // ignore near-silence
-const ONSET_WINDOW = 10         // keep last N onsets for BPM calc
+const ONSET_WINDOW = 16         // keep last N onsets for BPM calc (more = more stable)
 const WARMUP_FRAMES = ENERGY_HISTORY // skip detection during initial fill
+const BPM_JUMP_TOLERANCE = 15   // reject readings > this many BPM from current estimate
 
 export function useMicSync(songBpm) {
   const micActive = ref(false)
@@ -86,7 +87,11 @@ export function useMicSync(songBpm) {
         if (intervals.length >= 2) {
           const sorted = [...intervals].sort((a, b) => a - b)
           const median = sorted[Math.floor(sorted.length / 2)]
-          detectedBPM.value = Math.round(60 / median)
+          const candidate = Math.round(60 / median)
+          // Reject wild jumps — likely a false onset
+          if (detectedBPM.value === null || Math.abs(candidate - detectedBPM.value) <= BPM_JUMP_TOLERANCE) {
+            detectedBPM.value = candidate
+          }
         }
       }
     }
