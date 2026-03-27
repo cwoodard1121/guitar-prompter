@@ -8,6 +8,7 @@
       <div class="header-actions">
         <RouterLink to="/setlist/new" class="btn-add btn-setlist">+ Setlist</RouterLink>
         <RouterLink to="/song/new" class="btn-add">+ Song</RouterLink>
+        <RouterLink to="/settings" class="btn-settings" aria-label="Settings">⚙</RouterLink>
       </div>
     </header>
 
@@ -172,7 +173,21 @@ async function importSongs(e) {
   color: var(--text);
 }
 
-.header-actions { display: flex; gap: 0.5rem; }
+.header-actions { display: flex; gap: 0.5rem; align-items: center; }
+
+.btn-settings {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.1rem;
+  padding: 0.3rem 0.4rem;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: color 0.15s;
+}
+.btn-settings:active { color: var(--text); }
 
 .btn-add {
   background: var(--accent);

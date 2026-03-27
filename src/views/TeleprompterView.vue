@@ -136,13 +136,13 @@
       <button v-if="!syncMode" class="ctrl-btn catchup-btn" @click="catchUp">
         ⏩
       </button>
-      <button v-if="hasSync" class="ctrl-btn lyric-sync-btn" :class="{ active: lyricSyncMode }" @click="toggleLyricSync" title="Lyric position sync (Whisper)">
+      <button v-if="hasSync && devMode" class="ctrl-btn lyric-sync-btn" :class="{ active: lyricSyncMode }" @click="toggleLyricSync" title="Lyric position sync (Whisper)">
         🎙
       </button>
     </div>
 
     <!-- Lyric sync status bar -->
-    <div v-if="lyricSyncMode || isDev" class="lyric-status-bar">
+    <div v-if="lyricSyncMode || devMode" class="lyric-status-bar">
       <span class="lyric-dot" :class="{ active: lyricActive }"></span>
       <span class="lyric-label" :class="{ 'lyric-locked': lyricLocked }">{{ lyricActive ? (lyricLocked ? '🔒 Whisper' : 'Whisper') : 'Starting…' }}</span>
 
@@ -166,7 +166,7 @@
       </template>
 
       <!-- Dev extras -->
-      <template v-if="isDev">
+      <template v-if="devMode">
         <span class="lyric-sep">·</span>
         <label class="lyric-file-label">📁 test file<input type="file" accept="audio/*" class="lyric-file-input" @change="e => { lyricSyncMode = true; startLyricWithFile(e.target.files[0]) }" /></label>
         <template v-if="lyricActive">
@@ -214,6 +214,7 @@ import ChordDiagram from '../components/ChordDiagram.vue'
 import { extractChordNames, getChord, transposeChord, transposeContent } from '../data/chords.js'
 import { parseLrc, matchLrcToLines } from '../utils/parseLrc.js'
 import { useLyricSync } from '../composables/useLyricSync.js'
+import { useSettings } from '../composables/useSettings.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -713,7 +714,8 @@ function handleKeydown(e) {
 }
 
 // --- Lyric sync (Whisper-based position correction) ---
-const isDev = import.meta.env.DEV
+const { settings } = useSettings()
+const devMode = computed(() => settings.value.devMode)
 const lyricSyncMode = ref(false)
 const seekFlash = ref('')   // '' | 'locked' | 'corrected'
 
