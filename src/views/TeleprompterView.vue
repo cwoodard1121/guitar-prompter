@@ -159,6 +159,7 @@
         <span v-if="micActive" class="mic-debug">k:{{ debugEnergy.kick }} s:{{ debugEnergy.snare }} r:{{ debugEnergy.ratio }}</span>
       </template>
     </div>
+    <canvas v-if="isDev && micActive" ref="graphCanvas" width="320" height="64" class="mic-graph"></canvas>
 
     <!-- Song position dots (above play bar, sync mode only) -->
     <div v-if="syncMode" class="tp-seek-bar" @click="seekByClick" @touchstart.passive="onSeekTouchStart" @touchend="seekByTouch">
@@ -251,7 +252,17 @@ function loadSavedOffset() {
 // --- Mic sync mode ---
 const micMode = ref(false)
 const songBpmRef = computed(() => song.value?.bpm ?? null)
-const { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence, debugEnergy } = useMicSync(songBpmRef)
+const { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence, debugEnergy, drawGraph } = useMicSync(songBpmRef)
+const graphCanvas = ref(null)
+let graphRafId = null
+watch(micActive, (active) => {
+  if (active) {
+    const loop = () => { drawGraph(graphCanvas.value); graphRafId = requestAnimationFrame(loop) }
+    graphRafId = requestAnimationFrame(loop)
+  } else {
+    if (graphRafId) { cancelAnimationFrame(graphRafId); graphRafId = null }
+  }
+})
 const isDev = import.meta.env.DEV
 
 const confClass = computed(() => {
@@ -1160,4 +1171,15 @@ onUnmounted(() => {
 .mic-file-label { cursor: pointer; color: #888; font-size: 0.75rem; pointer-events: all; }
 .mic-file-input { display: none; }
 .mic-debug { font-size: 0.7rem; color: #666; font-family: monospace; }
+
+.mic-graph {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 6.5rem);
+  left: 50%;
+  transform: translateX(-50%);
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.1);
+  z-index: 50;
+  pointer-events: none;
+}
 </style>

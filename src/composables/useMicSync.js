@@ -4,13 +4,14 @@ import { ref, computed } from 'vue'
 // Kick drum (50–150 Hz) and snare (150–500 Hz) are the primary signals.
 // Full-band is ignored — too noisy in a live band mix.
 
-const ENERGY_HISTORY    = 43    // ~700ms rolling average at 60fps
-const MIN_ONSET_INTERVAL = 0.25 // 240 BPM max — filters hi-hats and sub-beat noise
-const ONSET_THRESHOLD   = 0.9   // spike must be 0.9x rolling average
-const NOISE_FLOOR       = 0.003 // ignore near-silence
-const ONSET_WINDOW      = 10    // onsets kept for interval calculation
-const WARMUP_FRAMES     = ENERGY_HISTORY
-const BPM_OUTPUT_HISTORY = 8    // median of last N estimates for stable display
+const ENERGY_HISTORY     = 43    // ~700ms rolling average at 60fps
+const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats and sub-beat noise
+const ONSET_THRESHOLD    = 0.8   // spike must be 0.8x rolling average
+const NOISE_FLOOR        = 0.003 // ignore near-silence
+const ONSET_WINDOW       = 10    // onsets kept for interval calculation
+const WARMUP_FRAMES      = ENERGY_HISTORY
+const BPM_OUTPUT_HISTORY = 8     // median of last N estimates for stable display
+const GRAPH_SIZE         = 300   // frames of history shown in graph
 
 export function useMicSync(songBpm) {
   const micActive   = ref(false)
@@ -29,9 +30,13 @@ export function useMicSync(songBpm) {
   let frameCount = 0
 
   // Onset + BPM state
-  const onsetTimes  = []
-  const bpmEstimates = [] // output smoothing buffer
-  let lastOnsetTime = -Infinity
+  const onsetTimes   = []
+  const bpmEstimates = []
+  let lastOnsetTime  = -Infinity
+
+  // Graph history (plain array, not reactive — drawn via RAF)
+  const graphLog = Array.from({ length: GRAPH_SIZE }, () => ({ kick: 0, snare: 0, ratio: 0, beat: false }))
+  let graphIdx = 0
 
   // Bin ranges computed once after AudioContext is ready
   let kickStart = 1, kickEnd = 3, snareStart = 3, snareEnd = 11
@@ -41,7 +46,7 @@ export function useMicSync(songBpm) {
     kickStart  = Math.max(1, Math.round(50  / binWidth))
     kickEnd    = Math.round(200 / binWidth)
     snareStart = kickEnd + 1
-    snareEnd   = Math.round(600 / binWidth)
+    snareEnd   = Math.round(400 / binWidth)
   }
 
   function processAudio() {
@@ -84,8 +89,13 @@ export function useMicSync(songBpm) {
 
     const now = audioCtx.currentTime
     const gap = now - lastOnsetTime
+    const beat = ratio > ONSET_THRESHOLD && gap > MIN_ONSET_INTERVAL
 
-    if (ratio > ONSET_THRESHOLD && gap > MIN_ONSET_INTERVAL) {
+    // Log to graph buffer
+    graphLog[graphIdx % GRAPH_SIZE] = { kick: kickEnergy, snare: snareEnergy, ratio, beat }
+    graphIdx++
+
+    if (beat) {
       lastOnsetTime = now
       onsetTimes.push(now)
       if (onsetTimes.length > ONSET_WINDOW) onsetTimes.shift()
@@ -139,6 +149,8 @@ export function useMicSync(songBpm) {
     onsetTimes.length   = 0
     bpmEstimates.length = 0
     lastOnsetTime = -Infinity
+    graphIdx = 0
+    graphLog.forEach(g => { g.kick = 0; g.snare = 0; g.ratio = 0; g.beat = false })
     micActive.value = true
     audioCtx.resume()
     rafId = requestAnimationFrame(processAudio)
@@ -175,6 +187,55 @@ export function useMicSync(songBpm) {
     detectedBPM.value = null
   }
 
+  function drawGraph(canvas) {
+    if (!canvas) return
+    const ctx = canvas.getContext('2d')
+    const W = canvas.width, H = canvas.height
+    ctx.fillStyle = '#111'
+    ctx.fillRect(0, 0, W, H)
+
+    // Threshold line
+    const threshY = H - (ONSET_THRESHOLD / 2.5) * H
+    ctx.strokeStyle = 'rgba(255,220,0,0.6)'
+    ctx.setLineDash([4, 4])
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(W, threshY); ctx.stroke()
+    ctx.setLineDash([])
+
+    const drawLine = (color, getter, scale) => {
+      ctx.strokeStyle = color
+      ctx.lineWidth = 1.5
+      ctx.beginPath()
+      for (let i = 0; i < GRAPH_SIZE; i++) {
+        const entry = graphLog[(graphIdx + i) % GRAPH_SIZE]
+        const x = (i / GRAPH_SIZE) * W
+        const y = H - Math.min(1, getter(entry) * scale) * H
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
+      }
+      ctx.stroke()
+    }
+
+    // Beat flashes
+    ctx.fillStyle = 'rgba(255,80,80,0.25)'
+    for (let i = 0; i < GRAPH_SIZE; i++) {
+      if (graphLog[(graphIdx + i) % GRAPH_SIZE].beat) {
+        const x = (i / GRAPH_SIZE) * W
+        ctx.fillRect(x - 1, 0, 3, H)
+      }
+    }
+
+    drawLine('rgba(0,200,255,0.9)',   e => e.kick,  20)  // kick — cyan
+    drawLine('rgba(255,140,0,0.9)',   e => e.snare, 20)  // snare — orange
+    drawLine('rgba(255,255,255,0.8)', e => e.ratio,  1)  // ratio — white
+
+    // Legend
+    ctx.font = '9px monospace'
+    ctx.fillStyle = 'rgba(0,200,255,0.9)';  ctx.fillText('kick',  4, 10)
+    ctx.fillStyle = 'rgba(255,140,0,0.9)';  ctx.fillText('snare', 30, 10)
+    ctx.fillStyle = 'rgba(255,255,255,0.8)';ctx.fillText('ratio', 60, 10)
+    ctx.fillStyle = 'rgba(255,220,0,0.8)';  ctx.fillText('thresh',90, 10)
+  }
+
   const bpmConfidence = computed(() => {
     const detected = detectedBPM.value
     const ref_ = typeof songBpm?.value !== 'undefined' ? songBpm.value : songBpm
@@ -191,5 +252,6 @@ export function useMicSync(songBpm) {
     detectedBPM,
     bpmConfidence,
     debugEnergy,
+    drawGraph,
   }
 }
