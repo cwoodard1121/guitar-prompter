@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 
 const ENERGY_HISTORY     = 43    // ~700ms rolling average at 60fps
 const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats and sub-beat noise
-const ONSET_THRESHOLD    = 0.8   // spike must be 0.8x rolling average
+const ONSET_THRESHOLD    = 0.5   // spike must be 0.5x rolling average
 const NOISE_FLOOR        = 0.003 // ignore near-silence
 const ONSET_WINDOW       = 10    // onsets kept for interval calculation
 const WARMUP_FRAMES      = ENERGY_HISTORY
@@ -191,49 +191,67 @@ export function useMicSync(songBpm) {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     const W = canvas.width, H = canvas.height
+    const MID = Math.floor(H / 2)
+
     ctx.fillStyle = '#111'
     ctx.fillRect(0, 0, W, H)
 
-    // Threshold line
-    const threshY = H - (ONSET_THRESHOLD / 2.5) * H
-    ctx.strokeStyle = 'rgba(255,220,0,0.6)'
-    ctx.setLineDash([4, 4])
+    // Divider
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, MID); ctx.lineTo(W, MID); ctx.stroke()
+
+    // ── Top half: ratio + threshold ──────────────────────────
+    const maxRatio = 2.5
+    const threshY = MID - (ONSET_THRESHOLD / maxRatio) * MID
+    ctx.strokeStyle = 'rgba(255,220,0,0.7)'
+    ctx.setLineDash([5, 5])
     ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(W, threshY); ctx.stroke()
     ctx.setLineDash([])
 
-    const drawLine = (color, getter, scale) => {
+    // Beat flashes (full height)
+    ctx.fillStyle = 'rgba(255,80,80,0.2)'
+    for (let i = 0; i < GRAPH_SIZE; i++) {
+      if (graphLog[(graphIdx + i) % GRAPH_SIZE].beat) {
+        ctx.fillRect((i / GRAPH_SIZE) * W - 1, 0, 3, H)
+      }
+    }
+
+    const drawLine = (color, getter, top, height, maxVal) => {
       ctx.strokeStyle = color
-      ctx.lineWidth = 1.5
+      ctx.lineWidth = 2
       ctx.beginPath()
       for (let i = 0; i < GRAPH_SIZE; i++) {
-        const entry = graphLog[(graphIdx + i) % GRAPH_SIZE]
+        const val = getter(graphLog[(graphIdx + i) % GRAPH_SIZE])
         const x = (i / GRAPH_SIZE) * W
-        const y = H - Math.min(1, getter(entry) * scale) * H
+        const y = top + height - Math.min(1, val / maxVal) * height
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
       }
       ctx.stroke()
     }
 
-    // Beat flashes
-    ctx.fillStyle = 'rgba(255,80,80,0.25)'
+    // Ratio (top half)
+    drawLine('rgba(255,255,255,0.9)', e => e.ratio, 0, MID, maxRatio)
+
+    // ── Bottom half: kick + snare, auto-scaled ────────────────
+    let maxKick = 0.001, maxSnare = 0.001
     for (let i = 0; i < GRAPH_SIZE; i++) {
-      if (graphLog[(graphIdx + i) % GRAPH_SIZE].beat) {
-        const x = (i / GRAPH_SIZE) * W
-        ctx.fillRect(x - 1, 0, 3, H)
-      }
+      const e = graphLog[(graphIdx + i) % GRAPH_SIZE]
+      if (e.kick  > maxKick)  maxKick  = e.kick
+      if (e.snare > maxSnare) maxSnare = e.snare
     }
+    const maxDrum = Math.max(maxKick, maxSnare) * 1.1 // shared scale, 10% headroom
 
-    drawLine('rgba(0,200,255,0.9)',   e => e.kick,  20)  // kick — cyan
-    drawLine('rgba(255,140,0,0.9)',   e => e.snare, 20)  // snare — orange
-    drawLine('rgba(255,255,255,0.8)', e => e.ratio,  1)  // ratio — white
+    drawLine('rgba(0,200,255,0.9)',  e => e.kick,  MID, MID, maxDrum)
+    drawLine('rgba(255,140,0,0.9)',  e => e.snare, MID, MID, maxDrum)
 
-    // Legend
-    ctx.font = '9px monospace'
-    ctx.fillStyle = 'rgba(0,200,255,0.9)';  ctx.fillText('kick',  4, 10)
-    ctx.fillStyle = 'rgba(255,140,0,0.9)';  ctx.fillText('snare', 30, 10)
-    ctx.fillStyle = 'rgba(255,255,255,0.8)';ctx.fillText('ratio', 60, 10)
-    ctx.fillStyle = 'rgba(255,220,0,0.8)';  ctx.fillText('thresh',90, 10)
+    // Labels
+    ctx.font = '10px monospace'
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText('ratio',  4, 12)
+    ctx.fillStyle = 'rgba(255,220,0,0.8)';   ctx.fillText('thresh', 4, 24)
+    ctx.fillStyle = 'rgba(0,200,255,0.9)';   ctx.fillText('kick',   4, MID + 14)
+    ctx.fillStyle = 'rgba(255,140,0,0.9)';   ctx.fillText('snare',  4, MID + 26)
   }
 
   const bpmConfidence = computed(() => {

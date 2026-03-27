@@ -159,7 +159,7 @@
         <span v-if="micActive" class="mic-debug">k:{{ debugEnergy.kick }} s:{{ debugEnergy.snare }} r:{{ debugEnergy.ratio }}</span>
       </template>
     </div>
-    <canvas v-if="isDev && micActive" ref="graphCanvas" width="320" height="64" class="mic-graph"></canvas>
+    <canvas v-if="isDev && micActive" ref="graphCanvas" width="480" height="120" class="mic-graph"></canvas>
 
     <!-- Song position dots (above play bar, sync mode only) -->
     <div v-if="syncMode" class="tp-seek-bar" @click="seekByClick" @touchstart.passive="onSeekTouchStart" @touchend="seekByTouch">
