@@ -241,7 +241,7 @@ export function useMicSync(songBpm) {
     ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(W, threshY); ctx.stroke()
     ctx.setLineDash([])
 
-    drawSmoothed('rgba(255,255,255,0.95)', smooth(e => e.flux, 3), 0, MID, maxFlux, 2.5)
+    drawSmoothed('rgba(255,255,255,0.95)', graphLog.map((_, i) => graphLog[(graphIdx + i) % GRAPH_SIZE].flux), 0, MID, maxFlux, 2.5)
 
     // ── Bottom half: kick (cyan) + snare (orange), auto-scaled
     const maxDrum = Math.max(1, ...graphLog.map(g => Math.max(g.kick, g.snare))) * 1.1
