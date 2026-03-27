@@ -311,6 +311,7 @@ async function initYTPlayer(videoId) {
     events: {
       onReady: () => { ytReady.value = true },
       onStateChange: (e) => {
+        if (lyricSyncMode.value) return  // lyric sync owns scrolling, ignore YT state
         const S = window.YT.PlayerState
         if (e.data === S.PAUSED && scrolling.value) scrolling.value = false
         if (e.data === S.PLAYING && !scrolling.value) scrolling.value = true
@@ -766,10 +767,12 @@ watch(suggestedSeek, (targetTime) => {
 async function toggleLyricSync() {
   if (lyricSyncMode.value) {
     lyricSyncMode.value = false
+    scrolling.value = false
     stopLyricSync()
   } else {
     lyricSyncMode.value = true
-    syncEnabled.value = true
+    // Do NOT set syncEnabled — that would initialize YouTube and its
+    // onStateChange would kill our scrolling. syncMode covers us via lyricSyncMode.
     await startLyricSync()
   }
 }
