@@ -12,8 +12,8 @@ export function useMicSync(songBpm) {
   const debugEnergy = ref({ flux: 0, z: 0 })
 
   // ── Tunable params (exposed for UI sliders) ──────────────
-  const freqLow     = ref(8000)  // Hz
-  const freqHigh    = ref(11000) // Hz
+  const freqLow     = ref(1500)  // Hz
+  const freqHigh    = ref(4000)  // Hz
   const zThresh     = ref(2.0)   // std devs above mean to trigger
   const minInterval = ref(0.15)  // seconds between detections
 
