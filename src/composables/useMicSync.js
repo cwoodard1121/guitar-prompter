@@ -15,6 +15,7 @@ const BPM_OUTPUT_HISTORY = 8    // median of last N estimates for stable display
 export function useMicSync(songBpm) {
   const micActive   = ref(false)
   const detectedBPM = ref(null)
+  const debugEnergy = ref({ kick: 0, snare: 0, ratio: 0 }) // dev only
 
   let audioCtx = null
   let analyser = null
@@ -75,6 +76,12 @@ export function useMicSync(songBpm) {
     // Kick weighted higher — it's the more reliable beat marker
     const ratio = kickRatio * 0.7 + snareRatio * 0.3
 
+    debugEnergy.value = {
+      kick:  +kickEnergy.toFixed(4),
+      snare: +snareEnergy.toFixed(4),
+      ratio: +ratio.toFixed(3),
+    }
+
     const now = audioCtx.currentTime
     const gap = now - lastOnsetTime
 
@@ -133,6 +140,7 @@ export function useMicSync(songBpm) {
     bpmEstimates.length = 0
     lastOnsetTime = -Infinity
     micActive.value = true
+    audioCtx.resume()
     rafId = requestAnimationFrame(processAudio)
   }
 
@@ -182,5 +190,6 @@ export function useMicSync(songBpm) {
     micActive,
     detectedBPM,
     bpmConfidence,
+    debugEnergy,
   }
 }

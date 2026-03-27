@@ -155,6 +155,8 @@
       <template v-if="isDev">
         <span class="mic-sep">·</span>
         <label class="mic-file-label">📁 test file<input type="file" accept="audio/*" class="mic-file-input" @change="e => startWithFile(e.target.files[0])" /></label>
+        <span v-if="micActive" class="mic-sep">·</span>
+        <span v-if="micActive" class="mic-debug">k:{{ debugEnergy.kick }} s:{{ debugEnergy.snare }} r:{{ debugEnergy.ratio }}</span>
       </template>
     </div>
 
@@ -249,7 +251,7 @@ function loadSavedOffset() {
 // --- Mic sync mode ---
 const micMode = ref(false)
 const songBpmRef = computed(() => song.value?.bpm ?? null)
-const { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence } = useMicSync(songBpmRef)
+const { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence, debugEnergy } = useMicSync(songBpmRef)
 const isDev = import.meta.env.DEV
 
 const confClass = computed(() => {
@@ -1157,4 +1159,5 @@ onUnmounted(() => {
 
 .mic-file-label { cursor: pointer; color: #888; font-size: 0.75rem; pointer-events: all; }
 .mic-file-input { display: none; }
+.mic-debug { font-size: 0.7rem; color: #666; font-family: monospace; }
 </style>
