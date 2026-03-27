@@ -142,7 +142,7 @@
     </div>
 
     <!-- Lyric sync status bar -->
-    <div v-if="lyricSyncMode" class="lyric-status-bar">
+    <div v-if="lyricSyncMode || isDev" class="lyric-status-bar">
       <span class="lyric-dot" :class="{ active: lyricActive }"></span>
       <span class="lyric-label">{{ lyricActive ? 'Listening' : 'Starting…' }}</span>
       <template v-if="matchedLine">
@@ -161,10 +161,14 @@
         <span class="lyric-sep">·</span>
         <span class="lyric-waiting">waiting for audio…</span>
       </template>
-      <template v-if="isDev && lyricActive">
+      <template v-if="isDev">
         <span class="lyric-sep">·</span>
-        <span class="lyric-debug">score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s chunks:{{ lyricDebug.chunksSent }}</span>
-        <span v-if="lyricDebug.error" class="lyric-error">{{ lyricDebug.error }}</span>
+        <label class="lyric-file-label">📁 test file<input type="file" accept="audio/*" class="lyric-file-input" @change="e => { lyricSyncMode = true; startLyricWithFile(e.target.files[0]) }" /></label>
+        <template v-if="lyricActive">
+          <span class="lyric-sep">·</span>
+          <span class="lyric-debug">score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s chunks:{{ lyricDebug.chunksSent }}</span>
+          <span v-if="lyricDebug.error" class="lyric-error"> {{ lyricDebug.error }}</span>
+        </template>
       </template>
     </div>
     <!-- Seek-correction flash -->
@@ -701,7 +705,7 @@ const lyricSyncMode = ref(false)
 const seekFlash = ref(false)
 
 const {
-  startLyricSync, stopLyricSync,
+  startLyricSync, startWithFile: startLyricWithFile, stopLyricSync,
   lyricActive, lastTranscript, matchedLine, matchConfidence, suggestedSeek,
   debugInfo: lyricDebug,
 } = useLyricSync(lrcLines, elapsed)
@@ -1183,6 +1187,8 @@ onUnmounted(() => {
 .lyric-no-match { color: #e94560; }
 .lyric-debug  { font-family: monospace; font-size: 0.68rem; color: #555; }
 .lyric-error  { color: #e94560; font-size: 0.68rem; }
+.lyric-file-label { cursor: pointer; color: #888; font-size: 0.72rem; pointer-events: all; }
+.lyric-file-input { display: none; }
 
 .conf-high { color: #4caf50; }
 .conf-mid  { color: #ff9800; }

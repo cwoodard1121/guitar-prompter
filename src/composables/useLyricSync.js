@@ -152,19 +152,36 @@ export function useLyricSync(lrcLines, currentElapsed) {
   }
 
   // ── Public API ─────────────────────────────────────────────────────────────
+  function _activate(mediaStream) {
+    stream = mediaStream
+    transcriptBuf = []
+    lastCorrectionAt = -Infinity
+    matchedLine.value = null
+    suggestedSeek.value = null
+    debugInfo.value = { chunksSent: 0, lastScore: 0, lastDelta: 0, error: '' }
+    lyricActive.value = true
+    startChunk()
+  }
+
   async function startLyricSync() {
     try {
-      stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      transcriptBuf = []
-      lastCorrectionAt = -Infinity
-      matchedLine.value = null
-      suggestedSeek.value = null
-      debugInfo.value = { chunksSent: 0, lastScore: 0, lastDelta: 0, error: '' }
-      lyricActive.value = true
-      startChunk()
+      const s = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
+      _activate(s)
     } catch (err) {
       console.warn('Lyric sync mic failed:', err)
     }
+  }
+
+  async function startWithFile(file) {
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    const audio = new Audio(URL.createObjectURL(file))
+    audio.crossOrigin = 'anonymous'
+    const src  = audioCtx.createMediaElementSource(audio)
+    const dest = audioCtx.createMediaStreamDestination()
+    src.connect(dest)
+    src.connect(audioCtx.destination)   // also play out loud
+    audio.play()
+    _activate(dest.stream)
   }
 
   function stopLyricSync() {
@@ -197,6 +214,7 @@ export function useLyricSync(lrcLines, currentElapsed) {
 
   return {
     startLyricSync,
+    startWithFile,
     stopLyricSync,
     lyricActive,
     lastTranscript,
