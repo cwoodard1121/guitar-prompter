@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 // regardless of the background level — no rolling average needed.
 
 const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats
-const FLUX_THRESHOLD     = 12    // flux spike (0–255 scale) needed to register a beat
+const FLUX_THRESHOLD     = 25    // flux spike (0–255 scale) needed to register a beat
 const ONSET_WINDOW       = 10    // onsets kept for BPM interval calculation
 const BPM_OUTPUT_HISTORY = 8     // median of last N BPM estimates for stable display
 const GRAPH_SIZE         = 300   // frames of scrolling graph history
@@ -41,9 +41,9 @@ export function useMicSync(songBpm) {
   function computeBinRanges() {
     const binWidth = audioCtx.sampleRate / analyser.fftSize
     kickStart  = Math.max(1, Math.round(50  / binWidth))
-    kickEnd    = Math.round(200 / binWidth)
+    kickEnd    = Math.round(150 / binWidth)
     snareStart = kickEnd + 1
-    snareEnd   = Math.round(400 / binWidth)
+    snareEnd   = Math.round(350 / binWidth)
   }
 
   function processAudio() {
