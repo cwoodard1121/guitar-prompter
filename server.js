@@ -209,21 +209,39 @@ app.get('/api/parse-title', async (req, res) => {
 })
 
 // ── AI chord/lyrics endpoint ─────────────────────────────────────────────────
-const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant for simple strumming songs (country, folk, pop). Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
 
-Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. Do NOT use power chord notation (no A5, E5, etc.) and do NOT use tab notation. Keep it playable by a casual guitarist who reads chord names.
+// Used when we have real lyrics — ask AI to annotate them with chords
+const CHORD_PROMPT_WITH_LYRICS = (title, artist, lyrics) =>
+  `You are a guitar chord assistant. Add chord annotations to the lyrics of "${title}"${artist ? ` by ${artist}` : ''}.
 
-Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
+Use standard open or barre chord names only (G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc.). No power chords, no tab notation. Keep it playable by a casual guitarist.
 
-Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
+Put chord names in [brackets] on lines ABOVE the lyric line they apply to, aligned to the syllable where the chord changes:
+
+[G]           [Cadd9]      [D]
+Here comes the sun        little darling
+[G]           [D]          [Em]
+It's been a long cold lonely winter
+
+Annotate verse 1 and the chorus. Output only the chord/lyric text, no explanations.
+
+Lyrics:
+${lyrics.slice(0, 3000)}`
+
+// Fallback when no lyrics found — use syllable placeholders (no copyright concern)
+const CHORD_PROMPT_FALLBACK = (title, artist) =>
+  `You are a guitar chord assistant. Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
+
+Use standard open or barre chord names only (G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc.). No power chords, no tab. Use the real chord progression for this song.
+
+For lyric lines use simplified placeholder syllables (da da da, la la la) matching the rhythm — do NOT reproduce copyrighted lyrics.
+
+Format: chord names in [brackets] above the syllable line they apply to:
 
 [G]           [Cadd9]      [D]
 da da-da da   da da-da da  da da
-[G]           [D]          [Em]
-da da-da da   da da-da da  da-da-da
 
-Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
+Only output the chord/lyric text, no explanations. Cover one verse and one chorus.`
 
 app.get('/api/lyrics', async (req, res) => {
   const { title = '', artist = '' } = req.query
@@ -232,15 +250,32 @@ app.get('/api/lyrics', async (req, res) => {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
 
+  // Step 1: fetch plain lyrics from lrclib so the AI gets real words to annotate
+  let plainLyrics = null
+  try {
+    const params = new URLSearchParams({ artist_name: artist, track_name: title })
+    const lrcRes = await fetch(`https://lrclib.net/api/get?${params}`, {
+      headers: { 'Lrclib-Client': 'guitar-portal/1.0' }
+    })
+    if (lrcRes.ok) {
+      const lrcData = await lrcRes.json()
+      plainLyrics = lrcData.plainLyrics || null
+    }
+  } catch { /* fall through to placeholder approach */ }
+
+  const prompt = plainLyrics
+    ? CHORD_PROMPT_WITH_LYRICS(title, artist, plainLyrics)
+    : CHORD_PROMPT_FALLBACK(title, artist)
+
   try {
     const client = new OpenAI({ apiKey })
     const completion = await client.chat.completions.create({
       model: 'o4-mini',
       max_completion_tokens: 4096,
       reasoning_effort: 'low',
-      messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
+      messages: [{ role: 'user', content: prompt }]
     })
-    res.json({ content: completion.choices[0]?.message?.content || '' })
+    res.json({ content: completion.choices[0]?.message?.content || '', hadLyrics: !!plainLyrics })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -252,7 +287,7 @@ app.use(express.static(distDir))
 app.get('/{*path}', (_req, res) => res.sendFile(path.join(distDir, 'index.html')))
 
 // ── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => console.log(`Guitar Prompter running on :${PORT}`))
+app.listen(PORT, () => console.log(`Guitar Portal running on :${PORT}`))
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function parseCookies(cookieHeader) {

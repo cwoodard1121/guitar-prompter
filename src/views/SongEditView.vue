@@ -39,14 +39,19 @@
       <div class="field-group field-grow">
         <div class="field-label-row">
           <div class="field-label">Chords &amp; Lyrics</div>
-          <button type="button" class="btn-ai" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
-            {{ loadingLyrics ? 'Fetching…' : '🤖 AI fill' }}
-          </button>
+          <div class="field-actions">
+            <button type="button" class="btn-format" :disabled="!form.content.trim() || checking" @click="formatContent">
+              {{ checking ? 'Formatting…' : 'Format' }}
+            </button>
+            <button type="button" class="btn-ai" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
+              {{ loadingLyrics ? 'Fetching…' : '✦ AI fill' }}
+            </button>
+          </div>
         </div>
-        <span class="hint">Use [brackets] for chords above lyric lines</span>
+        <span class="hint">Paste from Ultimate Guitar or similar, then tap Format — or use AI fill</span>
         <textarea
           v-model="form.content"
-          placeholder="[G]Here comes the [C]sun..."
+          placeholder="Paste tab here, or use AI fill above..."
           rows="14"
           spellcheck="false"
         ></textarea>
@@ -54,29 +59,10 @@
           <div class="progress-bar-fill"></div>
           <div class="progress-label">{{ loadingPhase }}</div>
         </div>
+        <span v-if="checking" class="check-status">Cleaning up format…</span>
+        <span v-if="checkError" class="check-error">{{ checkError }}</span>
         <span v-if="chordError" class="status-err">{{ chordError }}</span>
       </div>
-
-      <!-- ── Paste from tab (collapsible) ── -->
-      <details class="collapsible">
-        <summary class="collapsible-header">Paste from tab site</summary>
-        <div class="collapsible-body">
-          <span class="hint">Paste chords/lyrics from Ultimate Guitar or similar — we'll format it</span>
-          <textarea
-            v-model="pasteText"
-            placeholder="Paste tab text here..."
-            rows="8"
-            spellcheck="false"
-          ></textarea>
-          <div class="format-row">
-            <button type="button" class="btn-secondary" :disabled="!pasteText.trim()" @click="formatPaste">
-              Format &amp; import
-            </button>
-            <span v-if="checking" class="check-status">AI checking...</span>
-            <span v-if="checkError" class="check-error">{{ checkError }}</span>
-          </div>
-        </div>
-      </details>
 
       <!-- ── Sync section ── -->
       <div class="sync-section">
@@ -154,7 +140,6 @@ const store = useSongsStore()
 const isNew = computed(() => route.params.id === undefined)
 
 const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null, bpm: null, syncOffset: 0 })
-const pasteText = ref('')
 const checking = ref(false)
 const checkError = ref('')
 const loadingLyrics = ref(false)
@@ -228,10 +213,9 @@ function tap() {
   }
 }
 
-async function formatPaste() {
-  if (!pasteText.value.trim()) return
-  form.value.content = parseTabText(pasteText.value)
-  pasteText.value = ''
+async function formatContent() {
+  if (!form.value.content.trim()) return
+  form.value.content = parseTabText(form.value.content)
   aiCheckFormat(form.value.content)
 }
 
@@ -255,11 +239,10 @@ async function aiCheckFormat(content) {
 }
 
 const LOADING_PHASES = [
-  'Fetching lyrics...',
-  'Researching chord progressions...',
-  'Analyzing guitar tabs...',
-  'Verifying accuracy...',
-  'Building chord chart...',
+  'Fetching lyrics…',
+  'Adding chord annotations…',
+  'Verifying progressions…',
+  'Building chord chart…',
 ]
 let loadingInterval = null
 
@@ -521,6 +504,23 @@ textarea {
 }
 .btn-icon:active { background: rgba(255,255,255,0.08); color: var(--text); }
 
+.field-actions { display: flex; gap: 0.4rem; }
+
+/* Format button (secondary) */
+.btn-format {
+  background: rgba(255,255,255,0.07);
+  color: var(--text);
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  padding: 0.38rem 0.8rem;
+  font-size: 0.83rem;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn-format:disabled { opacity: 0.35; cursor: not-allowed; }
+.btn-format:active { opacity: 0.75; }
+
 /* AI fill button */
 .btn-ai {
   background: var(--accent);
@@ -562,48 +562,6 @@ textarea {
   text-align: center;
 }
 
-/* Collapsible paste section */
-.collapsible {
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius);
-  overflow: hidden;
-  background: var(--bg-card);
-}
-.collapsible-header {
-  padding: 0.8rem 1rem;
-  font-size: 0.83rem;
-  color: var(--text-muted);
-  cursor: pointer;
-  user-select: none;
-  list-style: none;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-weight: 500;
-}
-.collapsible-header::before { content: '▶'; font-size: 0.6rem; transition: transform 0.2s; opacity: 0.6; }
-details[open] .collapsible-header::before { transform: rotate(90deg); }
-.collapsible-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
-  padding: 0 1rem 1rem;
-}
-
-/* Secondary button */
-.btn-secondary {
-  background: rgba(255,255,255,0.07);
-  color: var(--text);
-  border: 1px solid var(--border-mid);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 1rem;
-  font-size: 0.88rem;
-  font-weight: 600;
-  align-self: flex-start;
-  cursor: pointer;
-}
-.btn-secondary:disabled { opacity: 0.35; cursor: not-allowed; }
-.btn-secondary:active { opacity: 0.75; }
 
 /* Sync section */
 .sync-section {
@@ -709,11 +667,6 @@ details[open] .collapsible-header::before { transform: rotate(90deg); }
 }
 .btn-play:active { opacity: 0.75; }
 
-.format-row {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
 .check-status {
   font-size: 0.78rem;
   color: var(--text-muted);
