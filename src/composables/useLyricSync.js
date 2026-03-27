@@ -16,8 +16,7 @@ const MIN_SEEK_DELTA    = 4.0
 // Don't fire corrections faster than this (seconds)
 const CORRECTION_COOLDOWN = 15
 // Require this many consecutive chunks agreeing on the same line before seeking
-// Higher than before because chunks are more frequent (3s vs 5s)
-const SEEK_CONFIRM_COUNT  = 3
+const SEEK_CONFIRM_COUNT  = 2
 // Max Whisper requests allowed in-flight at once — drop chunks beyond this
 const MAX_IN_FLIGHT = 2
 

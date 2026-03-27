@@ -495,12 +495,20 @@ const nextSyncLine = computed(() => {
   return -1
 })
 
-// Auto-scroll only when active line is outside the visible reading area
+// Auto-scroll when active line changes.
+// In lyric sync mode: always snap to the line (position just corrected, keep it centred).
+// In regular sync mode: only scroll when the line drifts outside the readable zone.
 watch(currentSyncLine, (i) => { if (i >= 0) scrollToLineIfNeeded(i) })
 
 function scrollToLineIfNeeded(i) {
   const el = lineRefs.value[i]
   if (!el || !contentEl.value) return
+  if (lyricSyncMode.value) {
+    // Always keep the current line centred — lyric sync just corrected our position
+    const target = el.offsetTop - contentEl.value.clientHeight * 0.35
+    contentEl.value.scrollTop = Math.max(0, target)
+    return
+  }
   const containerRect = contentEl.value.getBoundingClientRect()
   const elRect = el.getBoundingClientRect()
   const topBound = containerRect.top + containerRect.height * 0.15
