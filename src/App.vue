@@ -8,7 +8,7 @@
         <div v-else class="wake-title">Server is starting up</div>
         <div v-if="serverStatus === 'checking'" class="wake-sub">Connecting to server…</div>
         <div v-else class="wake-sub">
-          Render free tier spins down when idle.<br>This usually takes ~30 seconds.
+          Server spins down when idle.<br>This usually takes ~30 seconds.
         </div>
         <div class="wake-spinner">
           <span class="dot"></span><span class="dot"></span><span class="dot"></span>
@@ -68,7 +68,14 @@ function clearTimers() {
   if (elapsedTimer) clearInterval(elapsedTimer)
 }
 
-onMounted(checkHealth)
+onMounted(() => {
+  if (import.meta.env.DEV) {
+    serverStatus.value = 'online'
+    store.loadSongs()
+  } else {
+    checkHealth()
+  }
+})
 onUnmounted(clearTimers)
 </script>
 
