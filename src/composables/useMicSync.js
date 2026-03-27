@@ -9,9 +9,8 @@ const ENERGY_HISTORY = 43       // ~700ms of history at 60fps
 const MIN_ONSET_INTERVAL = 0.18 // 333 BPM max (enough for any real tempo)
 const ONSET_THRESHOLD = 1.35    // spike must be 1.35x rolling average
 const NOISE_FLOOR = 0.008       // ignore near-silence
-const ONSET_WINDOW = 16         // keep last N onsets for BPM calc (more = more stable)
+const ONSET_WINDOW = 10         // keep last N onsets — smaller = faster to respond
 const WARMUP_FRAMES = ENERGY_HISTORY // skip detection during initial fill
-const BPM_JUMP_TOLERANCE = 15   // reject readings > this many BPM from current estimate
 
 export function useMicSync(songBpm) {
   const micActive = ref(false)
@@ -87,11 +86,23 @@ export function useMicSync(songBpm) {
         if (intervals.length >= 2) {
           const sorted = [...intervals].sort((a, b) => a - b)
           const median = sorted[Math.floor(sorted.length / 2)]
-          const candidate = Math.round(60 / median)
-          // Reject wild jumps — likely a false onset
-          if (detectedBPM.value === null || Math.abs(candidate - detectedBPM.value) <= BPM_JUMP_TOLERANCE) {
-            detectedBPM.value = candidate
+          let candidate = Math.round(60 / median)
+
+          // Octave correction: snare/kick patterns often cause half-time detection.
+          // If song BPM is known and candidate is way off, try ×2 or ÷2.
+          const ref = typeof songBpm?.value !== 'undefined' ? songBpm.value : songBpm
+          if (ref) {
+            const doubled = candidate * 2
+            const halved  = Math.round(candidate / 2)
+            const options = [candidate]
+            if (doubled >= 30 && doubled <= 240) options.push(doubled)
+            if (halved  >= 30 && halved  <= 240) options.push(halved)
+            candidate = options.reduce((a, b) =>
+              Math.abs(a - ref) < Math.abs(b - ref) ? a : b
+            )
           }
+
+          detectedBPM.value = candidate
         }
       }
     }
