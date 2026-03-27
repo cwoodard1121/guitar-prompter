@@ -150,12 +150,11 @@ export function useLyricSync(lrcLines, currentElapsed) {
       const { text } = await res.json()
       if (!text?.trim()) return
 
-      // Latency: how long since the middle of the chunk was recorded
-      // midpoint of chunk = chunkStartedAt + CHUNK_MS/2
-      // round-trip API delay = performance.now() - fetchStart
-      const audioMidpointAge = (performance.now() - chunkStartedAt - CHUNK_MS / 2) / 1000
-      const apiDelay         = (performance.now() - fetchStart) / 1000
-      const totalLatency     = audioMidpointAge  // seconds of audio age at time of match
+      // audioAge = time since the midpoint of the chunk was recorded
+      // = total time elapsed since recording started, minus half the chunk duration
+      // This covers: remaining record time + base64 encode + API round-trip
+      const audioAge = (performance.now() - chunkStartedAt - CHUNK_MS / 2) / 1000
+      debugInfo.value.latency = +audioAge.toFixed(1)
 
       lastTranscript.value = text.trim()
       transcriptBuf.push(text.trim())
@@ -163,7 +162,7 @@ export function useLyricSync(lrcLines, currentElapsed) {
 
       // Pass the latest chunk separately — recall is scored against it alone
       // to avoid inflated scores from a large rolling buffer
-      matchAgainstLyrics(totalLatency, text.trim())
+      matchAgainstLyrics(audioAge, text.trim())
     } catch (err) {
       debugInfo.value.error = err.message
     }
@@ -297,7 +296,7 @@ export function useLyricSync(lrcLines, currentElapsed) {
     matchedLine.value   = null
     suggestedSeek.value = null
     initialSeek.value   = null
-    debugInfo.value = { chunksSent: 0, lastScore: 0, lastDelta: 0, error: '' }
+    debugInfo.value = { chunksSent: 0, lastScore: 0, lastDelta: 0, latency: 0, error: '' }
     lyricActive.value = true
     startChunk()
   }

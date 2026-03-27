@@ -171,7 +171,7 @@
         <label class="lyric-file-label">📁 test file<input type="file" accept="audio/*" class="lyric-file-input" @change="e => { lyricSyncMode = true; startLyricWithFile(e.target.files[0]) }" /></label>
         <template v-if="lyricActive">
           <span class="lyric-sep">·</span>
-          <span class="lyric-debug">chunks:{{ lyricDebug.chunksSent }} score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s</span>
+          <span class="lyric-debug">t:{{ elapsed.toFixed(1) }}s chunks:{{ lyricDebug.chunksSent }} score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s lag:{{ lyricDebug.latency }}s</span>
           <span v-if="lyricDebug.heardWords" class="lyric-debug"> | heard: {{ lyricDebug.heardWords }}</span>
           <span v-if="lyricDebug.matchedWords" class="lyric-debug"> vs: {{ lyricDebug.matchedWords }}</span>
           <span v-if="lyricDebug.error" class="lyric-error"> {{ lyricDebug.error }}</span>
