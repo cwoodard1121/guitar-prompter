@@ -53,6 +53,12 @@ function songsMiddlewarePlugin() {
   return {
     name: 'songs-middleware',
     configureServer(server) {
+      server.middlewares.use('/api/health', (_req, res) => {
+        res.statusCode = 200
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ ok: true }))
+      })
+
       server.middlewares.use('/api/songs', async (req, res) => {
         const url = new URL(req.url, 'http://localhost')
         const id = url.searchParams.get('id')
