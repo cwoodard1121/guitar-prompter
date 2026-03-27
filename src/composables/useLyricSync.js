@@ -1,7 +1,7 @@
 import { ref, computed } from 'vue'
 
 // How long each audio chunk covers (ms). Shorter = more responsive but more API calls.
-const CHUNK_MS        = 5000
+const CHUNK_MS        = 3000
 // Rolling transcript window: how many recent chunks to keep joined for matching
 const TRANSCRIPT_KEEP = 3
 // How far (seconds) from current position we search for a lyric match
@@ -16,7 +16,10 @@ const MIN_SEEK_DELTA    = 4.0
 // Don't fire corrections faster than this (seconds)
 const CORRECTION_COOLDOWN = 15
 // Require this many consecutive chunks agreeing on the same line before seeking
-const SEEK_CONFIRM_COUNT  = 2
+// Higher than before because chunks are more frequent (3s vs 5s)
+const SEEK_CONFIRM_COUNT  = 3
+// Max Whisper requests allowed in-flight at once — drop chunks beyond this
+const MAX_IN_FLIGHT = 2
 
 function normalize(text) {
   return text
@@ -134,11 +137,18 @@ export function useLyricSync(lrcLines, currentElapsed) {
   let confirmIdx       = -1             // line idx that is building confirmation streak
   let confirmCount     = 0              // how many consecutive chunks matched confirmIdx
   let initialLocked    = false          // true once we've fired the first-lock seek
+  let pendingCount     = 0              // number of Whisper requests currently in-flight
+  let chunkSeq         = 0             // increments with every chunk sent
+  let lastProcessedSeq = -1            // seq of most recently processed result
 
   // ── Transcription ──────────────────────────────────────────────────────────
   async function sendChunk(blob, chunkStartedAt) {
+    // Drop chunk if too many requests already in-flight (prevents backlog)
+    if (pendingCount >= MAX_IN_FLIGHT) return
+
+    const seq = ++chunkSeq
     debugInfo.value.chunksSent++
-    const fetchStart = performance.now()
+    pendingCount++
     try {
       const base64 = await blobToBase64(blob)
       const res = await fetch('/api/transcribe', {
@@ -149,6 +159,10 @@ export function useLyricSync(lrcLines, currentElapsed) {
       if (!res.ok) { debugInfo.value.error = `HTTP ${res.status}`; return }
       const { text } = await res.json()
       if (!text?.trim()) return
+
+      // Discard if a newer chunk's result has already been processed
+      if (seq <= lastProcessedSeq) return
+      lastProcessedSeq = seq
 
       // audioAge = time since the midpoint of the chunk was recorded
       // = total time elapsed since recording started, minus half the chunk duration
@@ -165,6 +179,8 @@ export function useLyricSync(lrcLines, currentElapsed) {
       matchAgainstLyrics(audioAge, text.trim())
     } catch (err) {
       debugInfo.value.error = err.message
+    } finally {
+      pendingCount--
     }
   }
 
@@ -296,6 +312,9 @@ export function useLyricSync(lrcLines, currentElapsed) {
     matchedLine.value   = null
     suggestedSeek.value = null
     initialSeek.value   = null
+    pendingCount     = 0
+    chunkSeq         = 0
+    lastProcessedSeq = -1
     debugInfo.value = { chunksSent: 0, lastScore: 0, lastDelta: 0, latency: 0, error: '' }
     lyricActive.value = true
     startChunk()
@@ -335,6 +354,9 @@ export function useLyricSync(lrcLines, currentElapsed) {
     transcriptBuf = []
     initialLocked     = false
     lyricLocked.value = false
+    pendingCount     = 0
+    chunkSeq         = 0
+    lastProcessedSeq = -1
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────
