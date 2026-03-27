@@ -152,6 +152,10 @@
         <span class="mic-sep">·</span>
         <span class="mic-waiting">detecting…</span>
       </template>
+      <template v-if="isDev && !micActive">
+        <span class="mic-sep">·</span>
+        <label class="mic-file-label">📁 test file<input type="file" accept="audio/*" class="mic-file-input" @change="e => startWithFile(e.target.files[0])" /></label>
+      </template>
     </div>
 
     <!-- Song position dots (above play bar, sync mode only) -->
@@ -245,7 +249,8 @@ function loadSavedOffset() {
 // --- Mic sync mode ---
 const micMode = ref(false)
 const songBpmRef = computed(() => song.value?.bpm ?? null)
-const { startMicSync, stopMicSync, micActive, detectedBPM, bpmConfidence } = useMicSync(songBpmRef)
+const { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence } = useMicSync(songBpmRef)
+const isDev = import.meta.env.DEV
 
 const confClass = computed(() => {
   const c = bpmConfidence.value
@@ -1149,4 +1154,7 @@ onUnmounted(() => {
 .conf-high { color: #4caf50; }
 .conf-mid  { color: #ff9800; }
 .conf-low  { color: #e94560; }
+
+.mic-file-label { cursor: pointer; color: #888; font-size: 0.75rem; pointer-events: all; }
+.mic-file-input { display: none; }
 </style>

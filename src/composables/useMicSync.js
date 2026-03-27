@@ -99,25 +99,40 @@ export function useMicSync(songBpm) {
     rafId = requestAnimationFrame(processAudio)
   }
 
+  function _initAnalyser() {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+    analyser = audioCtx.createAnalyser()
+    analyser.fftSize = 1024
+    frameCount = 0
+    histIdx = 0
+    fullHistory.fill(0)
+    bassHistory.fill(0)
+    onsetTimes.length = 0
+    lastOnsetTime = -Infinity
+    micActive.value = true
+    rafId = requestAnimationFrame(processAudio)
+  }
+
   async function startMicSync() {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)()
+      _initAnalyser()
       const source = audioCtx.createMediaStreamSource(stream)
-      analyser = audioCtx.createAnalyser()
-      analyser.fftSize = 1024
       source.connect(analyser)
-      micActive.value = true
-      frameCount = 0
-      histIdx = 0
-      fullHistory.fill(0)
-      bassHistory.fill(0)
-      onsetTimes.length = 0
-      lastOnsetTime = -Infinity
-      rafId = requestAnimationFrame(processAudio)
     } catch (err) {
       console.warn('Mic access failed:', err)
     }
+  }
+
+  async function startWithFile(file) {
+    const url = URL.createObjectURL(file)
+    const audio = new Audio(url)
+    audio.crossOrigin = 'anonymous'
+    _initAnalyser()
+    const source = audioCtx.createMediaElementSource(audio)
+    source.connect(analyser)
+    source.connect(audioCtx.destination) // so you can hear it
+    audio.play()
   }
 
   function stopMicSync() {
@@ -140,6 +155,7 @@ export function useMicSync(songBpm) {
 
   return {
     startMicSync,
+    startWithFile,
     stopMicSync,
     micActive,
     detectedBPM,
