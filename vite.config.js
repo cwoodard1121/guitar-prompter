@@ -5,6 +5,18 @@ import OpenAI, { toFile } from 'openai'
 import fs from 'fs'
 import path from 'path'
 
+const LYRICS_SEARCH_PROMPT = (title, artist) =>
+  `Search for the guitar tab for "${title}"${artist ? ` by ${artist}` : ''} on Ultimate Guitar or a similar tab site and return the chord chart.
+
+Format: chord names in [brackets] on the line ABOVE the words they apply to, like this:
+
+[G]        [C]        [D]
+Verse line one here
+[Em]       [C]
+Verse line two here
+
+Include verse 1 and the chorus. Output ONLY the chord chart text — no markdown, no explanation, no "here is the chord chart" intro.`
+
 const VALIDATE_PROMPT = (content) =>
   `You are a guitar chord formatter. The user has pasted a tab and it has been auto-formatted into bracket chord notation. Review it and fix any issues.
 
@@ -31,6 +43,18 @@ function readSongs() {
 
 function writeSongs(songs) {
   fs.writeFileSync(SONGS_FILE, JSON.stringify(songs, null, 2))
+}
+
+const CHORD_CACHE_FILE = path.resolve(process.cwd(), 'chord-cache.json')
+
+function readChordCache() {
+  try { return JSON.parse(fs.readFileSync(CHORD_CACHE_FILE, 'utf-8')) }
+  catch { return {} }
+}
+
+function writeChordCache(cache) {
+  try { fs.writeFileSync(CHORD_CACHE_FILE, JSON.stringify(cache, null, 2)) }
+  catch { /* ignore */ }
 }
 
 function songsMiddlewarePlugin() {
@@ -146,23 +170,28 @@ function apiMiddlewarePlugin(env) {
         const artist = url.searchParams.get('artist') || ''
         if (!title) return send(400, { error: 'title is required' })
 
+        const titleKey  = title.trim().toLowerCase()
+        const artistKey = artist.trim().toLowerCase()
+        const cacheKey  = `${titleKey}|||${artistKey}`
+
+        // Check local file cache
+        const cache = readChordCache()
+        if (cache[cacheKey]) return send(200, { content: cache[cacheKey], cached: true })
+
         try {
           const client = new OpenAI({ apiKey })
           const response = await client.responses.create({
             model: 'gpt-4o-mini',
             tools: [{ type: 'web_search_preview', search_context_size: 'low' }],
-            input: `Find the guitar chord chart for "${title}"${artist ? ` by ${artist}` : ''}. Search Ultimate Guitar or a similar tab site for the real chords and lyrics.
-
-Return the result formatted exactly like this — chord names in [brackets] on the line ABOVE the lyric they apply to:
-
-[G]        [C]        [D]
-Here comes the sun little darling
-[Em]       [C]
-It's been a long cold lonely winter
-
-Include verse 1 and the chorus. Return ONLY the formatted chord chart — no markdown, no explanation, no headers.`
+            input: LYRICS_SEARCH_PROMPT(title, artist),
           })
-          return send(200, { content: response.output_text || '' })
+          const content = response.output_text || ''
+
+          // Save to local cache
+          cache[cacheKey] = content
+          writeChordCache(cache)
+
+          return send(200, { content })
         } catch (err) {
           return send(500, { error: err.message })
         }

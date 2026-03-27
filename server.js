@@ -228,7 +228,7 @@ app.post('/api/transcribe', async (req, res) => {
   }
 })
 
-// ── AI chord/lyrics endpoint (web search) ────────────────────────────────────
+// ── AI chord/lyrics endpoint (web search + cache) ────────────────────────────
 app.get('/api/lyrics', async (req, res) => {
   const { title = '', artist = '' } = req.query
   if (!title) return res.status(400).json({ error: 'title is required' })
@@ -236,23 +236,49 @@ app.get('/api/lyrics', async (req, res) => {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
 
+  const titleKey  = title.trim().toLowerCase()
+  const artistKey = artist.trim().toLowerCase()
+
+  // Check cache first
+  const { data: cached } = await supabase
+    .from('chord_cache')
+    .select('content')
+    .eq('title_key', titleKey)
+    .eq('artist_key', artistKey)
+    .maybeSingle()
+
+  if (cached) return res.json({ content: cached.content, cached: true })
+
+  // Cache miss — call OpenAI web search
   try {
     const client = new OpenAI({ apiKey })
     const response = await client.responses.create({
       model: 'gpt-4o-mini',
       tools: [{ type: 'web_search_preview', search_context_size: 'low' }],
-      input: `Find the guitar chord chart for "${title}"${artist ? ` by ${artist}` : ''}. Search Ultimate Guitar or a similar tab site for the real chords and lyrics.
+      input: `Search for the guitar tab for "${title}"${artist ? ` by ${artist}` : ''} on Ultimate Guitar or a similar tab site and return the chord chart.
 
-Return the result formatted exactly like this — chord names in [brackets] on the line ABOVE the lyric they apply to:
+Format: chord names in [brackets] on the line ABOVE the words they apply to, like this:
 
 [G]        [C]        [D]
-Here comes the sun little darling
+Verse line one here
 [Em]       [C]
-It's been a long cold lonely winter
+Verse line two here
 
-Include verse 1 and the chorus. Return ONLY the formatted chord chart — no markdown, no explanation, no headers.`
+Include verse 1 and the chorus. Output ONLY the chord chart text — no markdown, no explanation, no "here is the chord chart" intro.`
     })
-    res.json({ content: response.output_text || '' })
+
+    const content = response.output_text || ''
+
+    // Store in cache (ignore errors — don't fail the request over a cache write)
+    supabase.from('chord_cache').insert({
+      title: title.trim(),
+      artist: artist.trim(),
+      title_key: titleKey,
+      artist_key: artistKey,
+      content,
+    }).then().catch(() => {})
+
+    res.json({ content })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
