@@ -9,8 +9,8 @@ const TRANSCRIPT_KEEP = 3
 const SEARCH_WINDOW   = 20
 // Minimum score to show a match in the UI (low — just for display)
 const DISPLAY_THRESHOLD = 0.20
-// Minimum score to trigger an auto-seek correction (high — must be very confident)
-const SEEK_THRESHOLD    = 0.65
+// Minimum score to trigger an auto-seek correction
+const SEEK_THRESHOLD    = 0.45
 // Don't auto-seek unless matched line is at least this far from current position
 const MIN_SEEK_DELTA    = 4.0
 // Don't fire corrections faster than this (seconds)
@@ -77,14 +77,15 @@ function phonetic(word) {
 }
 
 // ── Scoring ───────────────────────────────────────────────────────────────────
-// Jaccard on phonetic codes (set overlap, order-independent)
-function phoneticJaccard(aCodes, bCodes) {
-  if (!aCodes.length || !bCodes.length) return 0
-  const setA = new Set(aCodes)
-  const setB = new Set(bCodes)
-  let inter = 0
-  for (const c of setA) if (setB.has(c)) inter++
-  return inter / (setA.size + setB.size - inter)
+// Lyric recall: what fraction of the lyric line's words appear in the transcript.
+// Unlike Jaccard, extra transcript words don't penalise the score — we don't care
+// that Whisper heard 20 words, we care that it caught the 4 words in this line.
+function lyricRecall(tCodes, lCodes) {
+  if (!tCodes.length || !lCodes.length) return 0
+  const setT = new Set(tCodes)
+  let matches = 0
+  for (const c of lCodes) if (setT.has(c)) matches++
+  return matches / lCodes.length
 }
 
 // LCS length (dynamic programming) — respects word order
@@ -97,19 +98,20 @@ function lcsLength(a, b) {
   return dp[m][n]
 }
 
-// Combined score: 40% phonetic Jaccard + 60% LCS coverage of the lyric line
+// Combined score: 40% lyric recall + 60% LCS coverage (both relative to lyric length)
+// A 4-word lyric line where all 4 words appear in the right order in a 20-word
+// transcript should score ~100%, not ~18% like Jaccard would give.
 function matchScore(transcriptWords, lineWords) {
   if (!transcriptWords.length || !lineWords.length) return 0
   const tCodes = transcriptWords.map(phonetic).filter(Boolean)
   const lCodes = lineWords.map(phonetic).filter(Boolean)
   if (!tCodes.length || !lCodes.length) return 0
 
-  const jaccard = phoneticJaccard(tCodes, lCodes)
-  // LCS coverage: how much of the lyric line is covered by the transcript (in order)
-  const lcs     = lcsLength(tCodes, lCodes)
+  const recall   = lyricRecall(tCodes, lCodes)
+  const lcs      = lcsLength(tCodes, lCodes)
   const coverage = lcs / lCodes.length
 
-  return jaccard * 0.4 + coverage * 0.6
+  return recall * 0.4 + coverage * 0.6
 }
 
 export function useLyricSync(lrcLines, currentElapsed) {
