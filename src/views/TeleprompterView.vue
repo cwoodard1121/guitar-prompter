@@ -743,12 +743,12 @@ watch(initialSeek, (targetTime) => {
   if (targetTime === null) return
   initialSeek.value = null  // consume
   applySeek(targetTime)
-  // Start scroll/sync if not already running
-  if (!scrolling.value) {
-    syncEnabled.value = true
-    playStartTime.value = performance.now() - targetTime * 1000
-    scrolling.value = true
-  }
+  // Start scroll/sync — set state then kick the tick directly since
+  // the syncMode watcher fires async and may miss the first RAF frame
+  syncEnabled.value = true
+  playStartTime.value = performance.now() - targetTime * 1000
+  scrolling.value = true
+  startSyncTick()
   showFlash('locked')
 })
 

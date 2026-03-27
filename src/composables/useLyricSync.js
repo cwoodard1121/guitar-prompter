@@ -98,17 +98,20 @@ function lcsLength(a, b) {
   return dp[m][n]
 }
 
-// Combined score: 40% lyric recall + 60% LCS coverage (both relative to lyric length)
-// A 4-word lyric line where all 4 words appear in the right order in a 20-word
-// transcript should score ~100%, not ~18% like Jaccard would give.
-function matchScore(transcriptWords, lineWords) {
-  if (!transcriptWords.length || !lineWords.length) return 0
-  const tCodes = transcriptWords.map(phonetic).filter(Boolean)
+// Combined score:
+//   40% recall  — did the single latest chunk contain the lyric's words?
+//   60% LCS     — do those words appear in order across the rolling buffer?
+// Using two different inputs keeps recall honest (no buffer inflation)
+// while LCS benefits from the wider context.
+function matchScore(singleWords, bufferWords, lineWords) {
+  if (!singleWords.length || !lineWords.length) return 0
+  const sCodes = singleWords.map(phonetic).filter(Boolean)
+  const bCodes = bufferWords.map(phonetic).filter(Boolean)
   const lCodes = lineWords.map(phonetic).filter(Boolean)
-  if (!tCodes.length || !lCodes.length) return 0
+  if (!sCodes.length || !lCodes.length) return 0
 
-  const recall   = lyricRecall(tCodes, lCodes)
-  const lcs      = lcsLength(tCodes, lCodes)
+  const recall   = lyricRecall(sCodes, lCodes)
+  const lcs      = lcsLength(bCodes, lCodes)
   const coverage = lcs / lCodes.length
 
   return recall * 0.4 + coverage * 0.6
@@ -155,29 +158,31 @@ export function useLyricSync(lrcLines, currentElapsed) {
       const totalLatency     = audioMidpointAge  // seconds of audio age at time of match
 
       lastTranscript.value = text.trim()
-      transcriptBuf.push(text)
+      transcriptBuf.push(text.trim())
       if (transcriptBuf.length > TRANSCRIPT_KEEP) transcriptBuf.shift()
 
-      matchAgainstLyrics(totalLatency)
+      // Pass the latest chunk separately — recall is scored against it alone
+      // to avoid inflated scores from a large rolling buffer
+      matchAgainstLyrics(totalLatency, text.trim())
     } catch (err) {
       debugInfo.value.error = err.message
     }
   }
 
   // ── Matching ───────────────────────────────────────────────────────────────
-  function matchAgainstLyrics(audioAge = 0) {
+  function matchAgainstLyrics(audioAge = 0, latestChunk = '') {
     const lines = typeof lrcLines?.value !== 'undefined' ? lrcLines.value : lrcLines
     if (!lines?.length) return
 
-    // currentElapsed is where the scroll is RIGHT NOW, but the audio we transcribed
-    // was from ~audioAge seconds ago — so we search around where we were then
     const nowElapsed = typeof currentElapsed?.value !== 'undefined'
       ? currentElapsed.value : currentElapsed
     const elapsed = nowElapsed - audioAge
 
-    // Combine rolling transcript buffer into one normalized word list
-    const transcriptWords = normalize(transcriptBuf.join(' '))
-    if (!transcriptWords.length) return
+    // Latest chunk only for recall (tight, prevents buffer inflation)
+    const singleWords = normalize(latestChunk || transcriptBuf[transcriptBuf.length - 1] || '')
+    // Full buffer for LCS (order matching across a wider window)
+    const bufferWords = normalize(transcriptBuf.join(' '))
+    if (!singleWords.length) return
 
     let bestScore = 0
     let bestIdx   = -1
@@ -193,7 +198,7 @@ export function useLyricSync(lrcLines, currentElapsed) {
       const lineWords = normalize(lineText)
       if (!lineWords.length) continue
 
-      let score = matchScore(transcriptWords, lineWords)
+      let score = matchScore(singleWords, bufferWords, lineWords)
 
       // Boost score for lines close to current position (smooth falloff)
       const proximity = Math.max(0, 1 - Math.abs(line.time - elapsed) / SEARCH_WINDOW)
