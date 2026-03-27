@@ -3,7 +3,7 @@ config({ path: '.env.local' })
 import express from 'express'
 import path from 'path'
 import { fileURLToPath } from 'url'
-import OpenAI from 'openai'
+import OpenAI, { toFile } from 'openai'
 import { createClient } from '@supabase/supabase-js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -208,23 +208,27 @@ app.get('/api/parse-title', async (req, res) => {
   } catch { res.status(500).json({ error: 'parse failed' }) }
 })
 
-// ── AI chord/lyrics endpoint ─────────────────────────────────────────────────
-const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant for simple strumming songs (country, folk, pop). Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
+// ── Whisper transcription endpoint ──────────────────────────────────────────
+app.post('/api/transcribe', async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return res.status(500).json({ error: 'no key' })
 
-Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. Do NOT use power chord notation (no A5, E5, etc.) and do NOT use tab notation. Keep it playable by a casual guitarist who reads chord names.
+  const { audio, mimeType } = req.body
+  if (!audio) return res.status(400).json({ error: 'audio is required' })
 
-Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
+  try {
+    const buffer = Buffer.from(audio, 'base64')
+    const ext    = mimeType?.includes('mp4') ? 'mp4' : 'webm'
+    const file   = await toFile(buffer, `chunk.${ext}`, { type: mimeType || 'audio/webm' })
+    const client = new OpenAI({ apiKey })
+    const result = await client.audio.transcriptions.create({ model: 'whisper-1', file })
+    res.json({ text: result.text || '' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
 
-Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
-
-[G]           [Cadd9]      [D]
-da da-da da   da da-da da  da da
-[G]           [D]          [Em]
-da da-da da   da da-da da  da-da-da
-
-Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
-
+// ── AI chord/lyrics endpoint (web search + cache) ────────────────────────────
 app.get('/api/lyrics', async (req, res) => {
   const { title = '', artist = '' } = req.query
   if (!title) return res.status(400).json({ error: 'title is required' })
@@ -232,15 +236,49 @@ app.get('/api/lyrics', async (req, res) => {
   const apiKey = process.env.OPENAI_API_KEY
   if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
 
+  const titleKey  = title.trim().toLowerCase()
+  const artistKey = artist.trim().toLowerCase()
+
+  // Check cache first
+  const { data: cached } = await supabase
+    .from('chord_cache')
+    .select('content')
+    .eq('title_key', titleKey)
+    .eq('artist_key', artistKey)
+    .maybeSingle()
+
+  if (cached) return res.json({ content: cached.content, cached: true })
+
+  // Cache miss — call OpenAI web search
   try {
     const client = new OpenAI({ apiKey })
-    const completion = await client.chat.completions.create({
-      model: 'o4-mini',
-      max_completion_tokens: 4096,
-      reasoning_effort: 'low',
-      messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
+    const response = await client.responses.create({
+      model: 'gpt-4o-mini',
+      tools: [{ type: 'web_search_preview', search_context_size: 'low' }],
+      input: `Search for the guitar tab for "${title}"${artist ? ` by ${artist}` : ''} on Ultimate Guitar or a similar tab site and return the chord chart.
+
+Format: chord names in [brackets] on the line ABOVE the words they apply to, like this:
+
+[G]        [C]        [D]
+Verse line one here
+[Em]       [C]
+Verse line two here
+
+Include verse 1 and the chorus. Output ONLY the chord chart text — no markdown, no explanation, no "here is the chord chart" intro.`
     })
-    res.json({ content: completion.choices[0]?.message?.content || '' })
+
+    const content = response.output_text || ''
+
+    // Store in cache (ignore errors — don't fail the request over a cache write)
+    supabase.from('chord_cache').insert({
+      title: title.trim(),
+      artist: artist.trim(),
+      title_key: titleKey,
+      artist_key: artistKey,
+      content,
+    }).then().catch(() => {})
+
+    res.json({ content })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -252,7 +290,7 @@ app.use(express.static(distDir))
 app.get('/{*path}', (_req, res) => res.sendFile(path.join(distDir, 'index.html')))
 
 // ── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => console.log(`Guitar Prompter running on :${PORT}`))
+app.listen(PORT, () => console.log(`Guitar Portal running on :${PORT}`))
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function parseCookies(cookieHeader) {

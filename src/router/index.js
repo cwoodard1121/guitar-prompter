@@ -3,11 +3,13 @@ import HomeView from '../views/HomeView.vue'
 import SongEditView from '../views/SongEditView.vue'
 import TeleprompterView from '../views/TeleprompterView.vue'
 import SetlistEditView from '../views/SetlistEditView.vue'
+import SettingsView from '../views/SettingsView.vue'
 
 export default createRouter({
   history: createWebHistory(),
   routes: [
     { path: '/', component: HomeView },
+    { path: '/settings', component: SettingsView },
     { path: '/song/new', component: SongEditView },
     { path: '/song/:id/edit', component: SongEditView },
     { path: '/song/:id/play', component: TeleprompterView },
