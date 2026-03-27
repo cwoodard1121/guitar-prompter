@@ -228,23 +228,7 @@ app.post('/api/transcribe', async (req, res) => {
   }
 })
 
-// ── AI chord/lyrics endpoint ─────────────────────────────────────────────────
-const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant for simple strumming songs (country, folk, pop). Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
-
-Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. Do NOT use power chord notation (no A5, E5, etc.) and do NOT use tab notation. Keep it playable by a casual guitarist who reads chord names.
-
-Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
-
-Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
-
-[G]           [Cadd9]      [D]
-da da-da da   da da-da da  da da
-[G]           [D]          [Em]
-da da-da da   da da-da da  da-da-da
-
-Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
-
+// ── AI chord/lyrics endpoint (web search) ────────────────────────────────────
 app.get('/api/lyrics', async (req, res) => {
   const { title = '', artist = '' } = req.query
   if (!title) return res.status(400).json({ error: 'title is required' })
@@ -254,13 +238,21 @@ app.get('/api/lyrics', async (req, res) => {
 
   try {
     const client = new OpenAI({ apiKey })
-    const completion = await client.chat.completions.create({
-      model: 'o4-mini',
-      max_completion_tokens: 4096,
-      reasoning_effort: 'low',
-      messages: [{ role: 'user', content: CHORD_PROMPT(title, artist) }]
+    const response = await client.responses.create({
+      model: 'gpt-4o-mini',
+      tools: [{ type: 'web_search_preview', search_context_size: 'low' }],
+      input: `Find the guitar chord chart for "${title}"${artist ? ` by ${artist}` : ''}. Search Ultimate Guitar or a similar tab site for the real chords and lyrics.
+
+Return the result formatted exactly like this — chord names in [brackets] on the line ABOVE the lyric they apply to:
+
+[G]        [C]        [D]
+Here comes the sun little darling
+[Em]       [C]
+It's been a long cold lonely winter
+
+Include verse 1 and the chorus. Return ONLY the formatted chord chart — no markdown, no explanation, no headers.`
     })
-    res.json({ content: completion.choices[0]?.message?.content || '' })
+    res.json({ content: response.output_text || '' })
   } catch (err) {
     res.status(500).json({ error: err.message })
   }
@@ -272,7 +264,7 @@ app.use(express.static(distDir))
 app.get('/{*path}', (_req, res) => res.sendFile(path.join(distDir, 'index.html')))
 
 // ── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => console.log(`Guitar Prompter running on :${PORT}`))
+app.listen(PORT, () => console.log(`Guitar Portal running on :${PORT}`))
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function parseCookies(cookieHeader) {

@@ -3,7 +3,7 @@
     <header class="home-header">
       <div class="wordmark">
         <span class="wordmark-icon">🎸</span>
-        <span class="wordmark-text">Guitar Prompter</span>
+        <span class="wordmark-text">Guitar Portal</span>
       </div>
       <div class="header-actions">
         <RouterLink to="/setlist/new" class="btn-add btn-setlist">+ Setlist</RouterLink>
@@ -105,7 +105,7 @@ function exportSongs() {
   const blob = new Blob([JSON.stringify(store.songs, null, 2)], { type: 'application/json' })
   const a = document.createElement('a')
   a.href = URL.createObjectURL(blob)
-  a.download = 'guitar-prompter-songs.json'
+  a.download = 'guitar-portal-songs.json'
   a.click()
   URL.revokeObjectURL(a.href)
 }
@@ -139,37 +139,38 @@ async function importSongs(e) {
   flex-direction: column;
   min-height: 100dvh;
   padding: 1rem;
-  gap: 1.25rem;
+  gap: 1.5rem;
 }
 
 .home-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.5rem 0 0.75rem;
+  padding: 0.5rem 0 0.9rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .wordmark {
   display: flex;
   align-items: center;
-  gap: 0.55rem;
+  gap: 0.6rem;
 }
 .wordmark-icon {
-  font-size: 1.1rem;
-  background: var(--accent);
-  border-radius: 8px;
-  width: 2rem;
-  height: 2rem;
+  font-size: 1rem;
+  background: linear-gradient(135deg, var(--accent), #c0254a);
+  border-radius: 9px;
+  width: 2.1rem;
+  height: 2.1rem;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
+  box-shadow: 0 2px 8px var(--accent-glow);
 }
 .wordmark-text {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 700;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
   color: var(--text);
 }
 
@@ -192,27 +193,32 @@ async function importSongs(e) {
 .btn-add {
   background: var(--accent);
   color: #fff;
-  padding: 0.6rem 1.1rem;
+  padding: 0.55rem 1.05rem;
   border-radius: var(--radius);
   font-weight: 600;
-  font-size: 0.95rem;
+  font-size: 0.88rem;
   border: none;
+  box-shadow: 0 2px 8px var(--accent-glow);
+  letter-spacing: 0.01em;
 }
-.btn-add:active { opacity: 0.8; transform: scale(0.97); }
+.btn-add:active { opacity: 0.85; transform: scale(0.96); }
 .btn-setlist {
-  background: var(--accent2);
-  color: var(--text);
+  background: rgba(124,111,255,0.14);
+  color: var(--accent2-bright);
+  border: 1px solid rgba(124,111,255,0.25);
+  box-shadow: none;
 }
+.btn-setlist:active { opacity: 0.8; transform: scale(0.96); }
 
-.section { display: flex; flex-direction: column; gap: 0.6rem; }
+.section { display: flex; flex-direction: column; gap: 0.65rem; }
 
 .section-title {
-  font-size: 0.72rem;
+  font-size: 0.68rem;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.12em;
   color: var(--text-muted);
-  font-weight: 600;
-  padding-bottom: 0.4rem;
+  font-weight: 700;
+  padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -224,6 +230,7 @@ async function importSongs(e) {
   text-align: center;
   line-height: 1.8;
   padding: 1.5rem 0;
+  font-size: 0.95rem;
 }
 
 /* Setlists */
@@ -236,24 +243,25 @@ async function importSongs(e) {
 .setlist-card {
   background: var(--bg-card);
   border-radius: var(--radius);
-  padding: 0.85rem 1rem;
+  padding: 0.9rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   border: 1px solid var(--border-subtle);
-  border-left: 3px solid var(--accent2);
+  border-left: 3px solid var(--accent2-bright);
+  box-shadow: var(--shadow-sm);
 }
 .setlist-info { display: flex; flex-direction: column; gap: 0.2rem; min-width: 0; }
 .setlist-name { font-size: 1rem; font-weight: 600; }
 .setlist-count { font-size: 0.78rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.3rem; }
 .count-badge {
-  background: var(--accent2);
-  color: var(--text);
+  background: rgba(124,111,255,0.18);
+  color: var(--accent2-bright);
   font-size: 0.72rem;
   font-weight: 700;
   border-radius: 99px;
-  padding: 0.1em 0.5em;
+  padding: 0.1em 0.55em;
   line-height: 1.4;
 }
 
@@ -262,24 +270,26 @@ async function importSongs(e) {
   list-style: none;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.55rem;
 }
 .song-card {
   background: var(--bg-card);
   border-radius: var(--radius);
-  padding: 0.9rem 1rem;
+  padding: 0.85rem 1rem;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
   border: 1px solid var(--border-subtle);
+  box-shadow: var(--shadow-sm);
+  transition: border-color 0.2s;
 }
 .song-card:active { transform: scale(0.99); opacity: 0.9; }
 .song-thumb {
   width: 64px;
   height: 36px;
   object-fit: cover;
-  border-radius: 5px;
+  border-radius: 6px;
   flex-shrink: 0;
   background: #0a0a1a;
 }
@@ -300,39 +310,48 @@ async function importSongs(e) {
 }
 .song-artist { font-size: 0.82rem; color: var(--text-muted); }
 
-.song-actions { display: flex; gap: 0.4rem; flex-shrink: 0; }
+.song-actions { display: flex; gap: 0.35rem; flex-shrink: 0; }
 
 .btn {
-  padding: 0.45rem 0.8rem;
-  border-radius: var(--radius);
-  border: none;
-  font-size: 0.88rem;
+  padding: 0.45rem 0.75rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-mid);
+  font-size: 0.85rem;
   font-weight: 600;
-  background: var(--accent2);
+  background: rgba(255,255,255,0.06);
   color: var(--text);
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
 }
-.btn-play { background: var(--accent); color: #fff; }
+.btn-play {
+  background: var(--accent);
+  color: #fff;
+  border-color: transparent;
+  box-shadow: 0 2px 6px var(--accent-glow);
+}
 .btn-play:active { opacity: 0.85; }
-.btn-delete { background: #2a1515; color: #c0505050; }
-.btn:active { opacity: 0.8; transform: scale(0.96); }
+.btn-delete {
+  background: rgba(232,54,93,0.08);
+  border-color: rgba(232,54,93,0.18);
+  color: rgba(232,54,93,0.6);
+}
+.btn:active { opacity: 0.75; transform: scale(0.95); }
 
 .search-input {
   background: var(--bg-card);
-  border: 1px solid #333;
+  border: 1px solid var(--border-mid);
   border-radius: var(--radius);
   color: var(--text);
-  padding: 0.6rem 0.9rem;
+  padding: 0.65rem 0.95rem;
   font-size: 1rem;
   width: 100%;
   outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 .search-input:focus {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px rgba(233,69,96,0.15);
-  outline: none;
+  box-shadow: 0 0 0 3px var(--accent-dim);
 }
 
 /* Export / Import */
@@ -344,10 +363,11 @@ async function importSongs(e) {
 .btn-io {
   flex: 1;
   background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
+  border: 1px solid var(--border-mid);
   border-radius: var(--radius);
   color: var(--text-muted);
-  font-size: 0.85rem;
+  font-size: 0.83rem;
+  font-weight: 500;
   padding: 0.65rem;
   text-align: center;
   cursor: pointer;
@@ -355,6 +375,7 @@ async function importSongs(e) {
   align-items: center;
   justify-content: center;
   gap: 0.4rem;
+  transition: border-color 0.2s, color 0.2s;
 }
 .btn-io:active { opacity: 0.7; }
 </style>

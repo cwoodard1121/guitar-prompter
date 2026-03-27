@@ -5,22 +5,6 @@ import OpenAI, { toFile } from 'openai'
 import fs from 'fs'
 import path from 'path'
 
-const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant for simple strumming songs (country, folk, pop). Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
-
-Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. Do NOT use power chord notation (no A5, E5, etc.) and do NOT use tab notation. Keep it playable by a casual guitarist who reads chord names.
-
-Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
-
-Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
-
-[G]           [Cadd9]      [D]
-da da-da da   da da-da da  da da
-[G]           [D]          [Em]
-da da-da da   da da-da da  da-da-da
-
-Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
-
 const VALIDATE_PROMPT = (content) =>
   `You are a guitar chord formatter. The user has pasted a tab and it has been auto-formatted into bracket chord notation. Review it and fix any issues.
 
@@ -147,6 +131,43 @@ function apiMiddlewarePlugin(env) {
         }
       })
 
+      server.middlewares.use('/api/lyrics', async (req, res) => {
+        const send = (code, data) => {
+          res.statusCode = code
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(data))
+        }
+
+        const apiKey = env.OPENAI_API_KEY
+        if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
+
+        const url = new URL(req.url, 'http://localhost')
+        const title = url.searchParams.get('title') || ''
+        const artist = url.searchParams.get('artist') || ''
+        if (!title) return send(400, { error: 'title is required' })
+
+        try {
+          const client = new OpenAI({ apiKey })
+          const response = await client.responses.create({
+            model: 'gpt-4o-mini',
+            tools: [{ type: 'web_search_preview', search_context_size: 'low' }],
+            input: `Find the guitar chord chart for "${title}"${artist ? ` by ${artist}` : ''}. Search Ultimate Guitar or a similar tab site for the real chords and lyrics.
+
+Return the result formatted exactly like this — chord names in [brackets] on the line ABOVE the lyric they apply to:
+
+[G]        [C]        [D]
+Here comes the sun little darling
+[Em]       [C]
+It's been a long cold lonely winter
+
+Include verse 1 and the chorus. Return ONLY the formatted chord chart — no markdown, no explanation, no headers.`
+          })
+          return send(200, { content: response.output_text || '' })
+        } catch (err) {
+          return send(500, { error: err.message })
+        }
+      })
+
       server.middlewares.use('/api/chords', async (req, res) => {
         const send = (code, data) => {
           res.statusCode = code
@@ -171,11 +192,7 @@ function apiMiddlewarePlugin(env) {
           if (!content) return send(400, { error: 'content is required' })
           prompt = VALIDATE_PROMPT(content)
         } else {
-          const url = new URL(req.url, 'http://localhost')
-          const title = url.searchParams.get('title') || ''
-          const artist = url.searchParams.get('artist') || ''
-          if (!title) return send(400, { error: 'title is required' })
-          prompt = CHORD_PROMPT(title, artist)
+          return send(405, { error: 'method not allowed' })
         }
 
         try {
@@ -205,8 +222,8 @@ export default defineConfig(({ mode }) => {
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'guitar-icon-192.png', 'guitar-icon-512.png'],
       manifest: {
-        name: 'Guitar Prompter',
-        short_name: 'GuitarP',
+        name: 'Guitar Portal',
+        short_name: 'Guitar Portal',
         description: 'Guitar teleprompter with chords and lyrics',
         theme_color: '#1a1a2e',
         background_color: '#1a1a2e',

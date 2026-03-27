@@ -5,16 +5,24 @@
 }
 
 :root {
-  --bg: #1a1a2e;
-  --bg-card: #16213e;
-  --accent: #e94560;
-  --accent2: #1a4a8a;
-  --text: #eaeaea;
-  --text-muted: #888;
+  --bg: #0e0e1c;
+  --bg-card: #16162a;
+  --bg-elevated: #1e1e38;
+  --accent: #e8365d;
+  --accent-dim: rgba(232,54,93,0.15);
+  --accent-glow: rgba(232,54,93,0.25);
+  --accent2: #2d2d5c;
+  --accent2-bright: #7c6fff;
+  --text: #edeef5;
+  --text-muted: #6e6e98;
   --chord: #f5c518;
-  --radius: 10px;
-  --font-base: 18px;
+  --radius: 12px;
+  --radius-sm: 8px;
   --border-subtle: rgba(255,255,255,0.07);
+  --border-mid: rgba(255,255,255,0.11);
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.4);
+  --shadow-md: 0 4px 20px rgba(0,0,0,0.45);
+  --font-base: 18px;
 }
 
 html, body {
@@ -41,7 +49,7 @@ a {
 button {
   cursor: pointer;
   font-family: inherit;
-  transition: opacity 0.15s, background 0.15s, transform 0.1s;
+  transition: opacity 0.15s, background 0.15s, transform 0.1s, box-shadow 0.15s;
 }
 
 input, textarea {
