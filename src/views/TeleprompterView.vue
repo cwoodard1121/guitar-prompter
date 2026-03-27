@@ -312,6 +312,7 @@ async function initYTPlayer(videoId) {
     events: {
       onReady: () => { ytReady.value = true },
       onStateChange: (e) => {
+        if (lyricSyncMode.value) return  // lyric sync owns the clock, ignore YouTube state
         const S = window.YT.PlayerState
         if (e.data === S.PAUSED && scrolling.value) scrolling.value = false
         if (e.data === S.PLAYING && !scrolling.value) scrolling.value = true
@@ -403,8 +404,10 @@ const lineTimings = computed(() =>
 )
 const hasSync = computed(() => lineTimings.value.some(t => t !== null))
 const hasBpm = computed(() => !hasSync.value && !!song.value?.bpm)
+// lyricSyncMode included so currentSyncLine + scrollToLineIfNeeded work
+// while the mic is running (even without syncEnabled)
 const syncMode = computed(() =>
-  (hasSync.value || hasBpm.value) && syncEnabled.value
+  ((hasSync.value || hasBpm.value) && syncEnabled.value) || lyricSyncMode.value
 )
 
 // BPM mode: build synthetic timings from beat clock
@@ -520,7 +523,10 @@ function startSyncTick() {
   if (syncRafId) return
   function tick(now) {
     if (!syncMode.value) { syncRafId = null; return }
-    if (ytPlayer && ytReady.value) {
+    if (lyricSyncMode.value && playStartTime.value !== null) {
+      // Lyric sync owns the wall-clock — never touches YouTube
+      elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
+    } else if (ytPlayer && ytReady.value) {
       elapsed.value = ytPlayer.getCurrentTime() + syncOffset.value
     } else if (scrolling.value && playStartTime.value !== null) {
       elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
@@ -731,9 +737,11 @@ const confClass = computed(() => {
 })
 
 function applySeek(targetTime) {
-  if (ytPlayer && ytReady.value) {
+  if (ytPlayer && ytReady.value && !lyricSyncMode.value) {
+    // Normal sync: seek YouTube — it drives elapsed via getCurrentTime()
     ytPlayer.seekTo(targetTime, true)
   } else {
+    // Lyric sync (or no YouTube): correct the wall clock, never touch YouTube
     playStartTime.value = performance.now() - targetTime * 1000
     elapsed.value = targetTime
   }
@@ -744,11 +752,14 @@ function showFlash(type) {
   setTimeout(() => { seekFlash.value = '' }, type === 'locked' ? 1800 : 1200)
 }
 
-// First confident lyric lock — correct position
+// First confident lyric lock — set wall-clock to detected position and start scrolling
 watch(initialSeek, (targetTime) => {
   if (targetTime === null) return
   initialSeek.value = null  // consume
-  applySeek(targetTime)
+  applySeek(targetTime)     // sets playStartTime + elapsed (wall-clock path)
+  scrolling.value = true
+  stopSyncTick()
+  startSyncTick()           // restart tick to pick up new playStartTime immediately
   showFlash('locked')
 })
 
@@ -763,6 +774,8 @@ watch(suggestedSeek, (targetTime) => {
 async function toggleLyricSync() {
   if (lyricSyncMode.value) {
     lyricSyncMode.value = false
+    // Only kill scroll if normal sync isn't also running
+    if (!syncEnabled.value) scrolling.value = false
     stopLyricSync()
   } else {
     lyricSyncMode.value = true
