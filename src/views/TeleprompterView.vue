@@ -518,11 +518,12 @@ function startSyncTick() {
   if (syncRafId) return
   function tick(now) {
     if (!syncMode.value) { syncRafId = null; return }
-    if (ytPlayer && ytReady.value && !lyricSyncMode.value) {
-      // YouTube is the clock — but not when lyric sync is driving position
+    if (lyricSyncMode.value && playStartTime.value !== null) {
+      // Lyric sync owns the clock — advance wall-clock unconditionally
+      elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
+    } else if (ytPlayer && ytReady.value) {
       elapsed.value = ytPlayer.getCurrentTime() + syncOffset.value
     } else if (scrolling.value && playStartTime.value !== null) {
-      // Wall clock — lyric sync mode always uses this path
       elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
     }
     syncRafId = requestAnimationFrame(tick)
@@ -730,9 +731,10 @@ const confClass = computed(() => {
 })
 
 function applySeek(targetTime) {
-  if (ytPlayer && ytReady.value) {
+  if (ytPlayer && ytReady.value && !lyricSyncMode.value) {
     ytPlayer.seekTo(targetTime, true)
   } else {
+    // Lyric sync (or no YT): always use wall-clock
     playStartTime.value = performance.now() - targetTime * 1000
     elapsed.value = targetTime
   }
