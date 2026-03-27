@@ -312,7 +312,6 @@ async function initYTPlayer(videoId) {
     events: {
       onReady: () => { ytReady.value = true },
       onStateChange: (e) => {
-        if (lyricSyncMode.value) return  // lyric sync owns scrolling, ignore YT state
         const S = window.YT.PlayerState
         if (e.data === S.PAUSED && scrolling.value) scrolling.value = false
         if (e.data === S.PLAYING && !scrolling.value) scrolling.value = true
@@ -515,37 +514,6 @@ function scrollToLineIfNeeded(i) {
 
 let syncRafId = null
 
-// Smooth scroll for lyric sync — called every RAF frame.
-// Interpolates scroll position between the current LRC line and the next,
-// so the display flows continuously instead of freezing between line changes.
-function lyricSyncScroll() {
-  if (!contentEl.value) return
-  const timings = activeTimings.value
-  const cur = currentSyncLine.value
-  if (cur < 0) return
-  const curEl = lineRefs.value[cur]
-  if (!curEl) return
-
-  // Find the next timed line after cur
-  let nxt = -1
-  for (let i = cur + 1; i < timings.length; i++) {
-    if (timings[i] !== null) { nxt = i; break }
-  }
-
-  const curTop = curEl.offsetTop
-  let target = curTop
-
-  if (nxt >= 0 && timings[nxt] > timings[cur]) {
-    const nxtEl = lineRefs.value[nxt]
-    if (nxtEl) {
-      const frac = Math.min(1, (elapsed.value - timings[cur]) / (timings[nxt] - timings[cur]))
-      target = curTop + frac * (nxtEl.offsetTop - curTop)
-    }
-  }
-
-  contentEl.value.scrollTop = Math.max(0, target - contentEl.value.clientHeight * 0.35)
-}
-
 // Sync tick — always runs while syncMode is on, regardless of play/pause
 // YouTube drives elapsed directly; wall-clock only advances when scrolling
 function startSyncTick() {
@@ -556,11 +524,7 @@ function startSyncTick() {
     if (!syncMode.value && !(scrolling.value && playStartTime.value !== null)) {
       syncRafId = null; return
     }
-    if (lyricSyncMode.value && playStartTime.value !== null) {
-      // Lyric sync owns the clock — advance wall-clock unconditionally
-      elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
-      lyricSyncScroll()  // smooth continuous scroll every frame
-    } else if (ytPlayer && ytReady.value) {
+    if (ytPlayer && ytReady.value) {
       elapsed.value = ytPlayer.getCurrentTime() + syncOffset.value
     } else if (scrolling.value && playStartTime.value !== null) {
       elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
@@ -771,10 +735,9 @@ const confClass = computed(() => {
 })
 
 function applySeek(targetTime) {
-  if (ytPlayer && ytReady.value && !lyricSyncMode.value) {
+  if (ytPlayer && ytReady.value) {
     ytPlayer.seekTo(targetTime, true)
   } else {
-    // Lyric sync (or no YT): always use wall-clock
     playStartTime.value = performance.now() - targetTime * 1000
     elapsed.value = targetTime
   }
@@ -785,18 +748,17 @@ function showFlash(type) {
   setTimeout(() => { seekFlash.value = '' }, type === 'locked' ? 1800 : 1200)
 }
 
-// First confident lyric lock — seek there and start the clock rolling
+// First confident lyric lock — seek YouTube (or wall-clock if no YouTube)
 watch(initialSeek, (targetTime) => {
   if (targetTime === null) return
   initialSeek.value = null  // consume
-  // Wall-clock: set where we are, then kick the tick directly
-  // (don't touch syncEnabled — that would open YouTube)
-  playStartTime.value = performance.now() - targetTime * 1000
-  elapsed.value = targetTime
-  scrolling.value = true
-  // Force-restart tick so it picks up the new playStartTime immediately
-  stopSyncTick()
-  startSyncTick()
+  applySeek(targetTime)
+  if (!ytPlayer || !ytReady.value) {
+    // No YouTube — start wall-clock scroll if not already running
+    scrolling.value = true
+    stopSyncTick()
+    startSyncTick()
+  }
   showFlash('locked')
 })
 
@@ -810,16 +772,11 @@ watch(suggestedSeek, (targetTime) => {
 
 async function toggleLyricSync() {
   if (lyricSyncMode.value) {
-    const wasLocked = lyricLocked.value
     lyricSyncMode.value = false
-    // If we established a lock, keep scrolling — wall-clock branch takes over in tick
-    // If we never locked, nothing useful is playing so stop
-    if (!wasLocked) scrolling.value = false
     stopLyricSync()
+    // Don't touch scrolling — YouTube/wall-clock continues uninterrupted
   } else {
     lyricSyncMode.value = true
-    // Do NOT set syncEnabled — that would initialize YouTube and its
-    // onStateChange would kill our scrolling. syncMode covers us via lyricSyncMode.
     await startLyricSync()
   }
 }
