@@ -56,8 +56,8 @@
         </div>
       </div>
 
-      <!-- YouTube embed (inline, between header and lyrics) -->
-      <div v-if="hasYoutube && syncEnabled" class="yt-overlay" :class="{ 'yt-hidden': !showYT }">
+      <!-- YouTube embed (inline, between header and lyrics) — hidden in mic mode -->
+      <div v-if="hasYoutube && syncEnabled && !micMode" class="yt-overlay" :class="{ 'yt-hidden': !showYT }">
         <button class="yt-toggle-btn" @click="showYT = !showYT">
           {{ showYT ? '▾ YT' : '▸ YT' }}
         </button>
@@ -136,6 +136,22 @@
       <button v-if="!syncMode" class="ctrl-btn catchup-btn" @click="catchUp">
         ⏩
       </button>
+      <button class="ctrl-btn mic-btn" :class="{ active: micMode }" @click="toggleMicMode" title="Mic sync mode">🎙</button>
+    </div>
+
+    <!-- Mic mode status bar -->
+    <div v-if="micMode" class="mic-status-bar">
+      <span class="mic-dot" :class="{ listening: micActive }"></span>
+      <span class="mic-label">{{ micActive ? 'Listening' : 'Starting…' }}</span>
+      <template v-if="detectedBPM">
+        <span class="mic-sep">·</span>
+        <span class="mic-bpm">{{ detectedBPM }} BPM</span>
+        <span v-if="songBpmRef" class="mic-conf" :class="confClass">{{ bpmConfidence }}%</span>
+      </template>
+      <template v-else-if="micActive">
+        <span class="mic-sep">·</span>
+        <span class="mic-waiting">detecting…</span>
+      </template>
     </div>
 
     <!-- Song position dots (above play bar, sync mode only) -->
@@ -168,6 +184,7 @@ import { useSetlistsStore } from '../stores/setlists.js'
 import ChordDiagram from '../components/ChordDiagram.vue'
 import { extractChordNames, getChord, transposeChord, transposeContent } from '../data/chords.js'
 import { parseLrc, matchLrcToLines } from '../utils/parseLrc.js'
+import { useMicSync } from '../composables/useMicSync.js'
 
 const route = useRoute()
 const router = useRouter()
@@ -223,6 +240,31 @@ const syncOffset = ref(0)   // seconds — positive = lyrics shift earlier, nega
 
 function loadSavedOffset() {
   syncOffset.value = song.value?.syncOffset ?? 0
+}
+
+// --- Mic sync mode ---
+const micMode = ref(false)
+const songBpmRef = computed(() => song.value?.bpm ?? null)
+const { startMicSync, stopMicSync, micActive, detectedBPM, bpmConfidence } = useMicSync(songBpmRef)
+
+const confClass = computed(() => {
+  const c = bpmConfidence.value
+  if (c >= 65) return 'conf-high'
+  if (c >= 35) return 'conf-mid'
+  return 'conf-low'
+})
+
+async function toggleMicMode() {
+  if (micMode.value) {
+    micMode.value = false
+    stopMicSync()
+    scrolling.value = false
+  } else {
+    micMode.value = true
+    // Mic mode uses wall-clock sync — enable sync, hide YouTube
+    syncEnabled.value = true
+    await startMicSync()
+  }
 }
 
 watch(song, (s) => {
@@ -668,6 +710,7 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeydown)
   if (rafId) cancelAnimationFrame(rafId)
   stopSyncTick()
+  stopMicSync()
   if (ytPlayer) { ytPlayer.destroy(); ytPlayer = null }
 })
 </script>
@@ -1060,4 +1103,50 @@ onUnmounted(() => {
 .tp-seek-dot.active {
   background: rgba(255,255,255,0.7);
 }
+/* ── Mic mode ───────────────────────────────────────────────── */
+.mic-btn.active { background: #e94560; color: #fff; }
+
+.mic-status-bar {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 3rem);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 20px;
+  padding: 0.3rem 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.78rem;
+  color: #ccc;
+  z-index: 50;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.mic-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #555;
+  flex-shrink: 0;
+}
+.mic-dot.listening {
+  background: #e94560;
+  animation: mic-pulse 1.2s ease-in-out infinite;
+}
+@keyframes mic-pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}
+
+.mic-sep   { color: #555; }
+.mic-bpm   { color: #eee; font-weight: 600; }
+.mic-waiting { color: #666; font-style: italic; }
+
+.mic-conf { font-weight: 600; margin-left: 0.15rem; }
+.conf-high { color: #4caf50; }
+.conf-mid  { color: #ff9800; }
+.conf-low  { color: #e94560; }
 </style>
