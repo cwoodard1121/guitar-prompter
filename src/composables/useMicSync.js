@@ -6,8 +6,8 @@ import { ref, computed } from 'vue'
 
 const ENERGY_HISTORY    = 43    // ~700ms rolling average at 60fps
 const MIN_ONSET_INTERVAL = 0.25 // 240 BPM max — filters hi-hats and sub-beat noise
-const ONSET_THRESHOLD   = 1.5   // spike must be 1.5x rolling average
-const NOISE_FLOOR       = 0.01  // ignore near-silence
+const ONSET_THRESHOLD   = 1.3   // spike must be 1.3x rolling average
+const NOISE_FLOOR       = 0.003 // ignore near-silence
 const ONSET_WINDOW      = 10    // onsets kept for interval calculation
 const WARMUP_FRAMES     = ENERGY_HISTORY
 const BPM_OUTPUT_HISTORY = 8    // median of last N estimates for stable display
@@ -123,6 +123,7 @@ export function useMicSync(songBpm) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)()
     analyser = audioCtx.createAnalyser()
     analyser.fftSize = 1024
+    analyser.smoothingTimeConstant = 0.2 // default 0.8 kills transients — need sharp hits
     computeBinRanges()
     frameCount = 0
     histIdx    = 0
