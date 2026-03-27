@@ -1,32 +1,29 @@
 import { ref, computed } from 'vue'
 
-// Beat/tempo detection focused on drum frequencies.
-// Kick drum (50–150 Hz) and snare (150–500 Hz) are the primary signals.
-// Full-band is ignored — too noisy in a live band mix.
+// Beat/tempo detection using spectral flux on drum frequency bands.
+// Spectral flux = energy INCREASE between consecutive frames.
+// This works in a live band mix because beats cause sudden energy jumps
+// regardless of the background level — no rolling average needed.
 
-const ENERGY_HISTORY     = 43    // ~700ms rolling average at 60fps
-const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats and sub-beat noise
-const ONSET_THRESHOLD    = 0.5   // spike must be 0.5x rolling average
-const NOISE_FLOOR        = 0.003 // ignore near-silence
-const ONSET_WINDOW       = 10    // onsets kept for interval calculation
-const WARMUP_FRAMES      = ENERGY_HISTORY
-const BPM_OUTPUT_HISTORY = 8     // median of last N estimates for stable display
-const GRAPH_SIZE         = 300   // frames of history shown in graph
+const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats
+const FLUX_THRESHOLD     = 8     // flux spike (0–255 scale) needed to register a beat
+const ONSET_WINDOW       = 10    // onsets kept for BPM interval calculation
+const BPM_OUTPUT_HISTORY = 8     // median of last N BPM estimates for stable display
+const GRAPH_SIZE         = 300   // frames of scrolling graph history
+const WARMUP_FRAMES      = 5     // skip first few frames (prev buffer starts empty)
 
 export function useMicSync(songBpm) {
   const micActive   = ref(false)
   const detectedBPM = ref(null)
-  const debugEnergy = ref({ kick: 0, snare: 0, ratio: 0 }) // dev only
+  const debugEnergy = ref({ kick: 0, snare: 0, flux: 0 }) // dev only
 
   let audioCtx = null
   let analyser = null
   let stream   = null
   let rafId    = null
 
-  // Per-band rolling energy (circular buffers)
-  const kickHistory  = new Array(ENERGY_HISTORY).fill(0)
-  const snareHistory = new Array(ENERGY_HISTORY).fill(0)
-  let histIdx    = 0
+  // Previous frame's frequency data (for flux calculation)
+  let prevFreq = null
   let frameCount = 0
 
   // Onset + BPM state
@@ -34,8 +31,8 @@ export function useMicSync(songBpm) {
   const bpmEstimates = []
   let lastOnsetTime  = -Infinity
 
-  // Graph history (plain array, not reactive — drawn via RAF)
-  const graphLog = Array.from({ length: GRAPH_SIZE }, () => ({ kick: 0, snare: 0, ratio: 0, beat: false }))
+  // Graph history
+  const graphLog = Array.from({ length: GRAPH_SIZE }, () => ({ kick: 0, snare: 0, flux: 0, beat: false }))
   let graphIdx = 0
 
   // Bin ranges computed once after AudioContext is ready
@@ -52,47 +49,47 @@ export function useMicSync(songBpm) {
   function processAudio() {
     if (!analyser || !audioCtx) return
 
-    const freqBuf = new Uint8Array(analyser.frequencyBinCount)
+    const bufLen  = analyser.frequencyBinCount
+    const freqBuf = new Uint8Array(bufLen)
     analyser.getByteFrequencyData(freqBuf)
 
-    // Kick energy (50–150 Hz)
-    let kickSum = 0
-    for (let i = kickStart; i <= kickEnd; i++) kickSum += (freqBuf[i] / 255) ** 2
-    const kickEnergy = Math.sqrt(kickSum / (kickEnd - kickStart + 1))
-
-    // Snare energy (150–500 Hz)
-    let snareSum = 0
-    for (let i = snareStart; i <= snareEnd; i++) snareSum += (freqBuf[i] / 255) ** 2
-    const snareEnergy = Math.sqrt(snareSum / (snareEnd - snareStart + 1))
-
-    kickHistory [histIdx % ENERGY_HISTORY] = kickEnergy
-    snareHistory[histIdx % ENERGY_HISTORY] = snareEnergy
-    histIdx++
     frameCount++
-
-    if (frameCount < WARMUP_FRAMES) { rafId = requestAnimationFrame(processAudio); return }
-
-    const avgKick  = kickHistory .reduce((a, b) => a + b, 0) / ENERGY_HISTORY
-    const avgSnare = snareHistory.reduce((a, b) => a + b, 0) / ENERGY_HISTORY
-
-    const kickRatio  = avgKick  > NOISE_FLOOR ? kickEnergy  / avgKick  : 0
-    const snareRatio = avgSnare > NOISE_FLOOR ? snareEnergy / avgSnare : 0
-
-    // Kick weighted higher — it's the more reliable beat marker
-    const ratio = kickRatio * 0.7 + snareRatio * 0.3
-
-    debugEnergy.value = {
-      kick:  +kickEnergy.toFixed(4),
-      snare: +snareEnergy.toFixed(4),
-      ratio: +ratio.toFixed(3),
+    if (frameCount < WARMUP_FRAMES) {
+      prevFreq = freqBuf.slice()
+      rafId = requestAnimationFrame(processAudio)
+      return
     }
 
-    const now = audioCtx.currentTime
-    const gap = now - lastOnsetTime
-    const beat = ratio > ONSET_THRESHOLD && gap > MIN_ONSET_INTERVAL
+    // Spectral flux: sum of positive energy increases per band
+    // Values are 0–255 per bin, normalized by bin count → flux range ~0–255
+    let kickFlux = 0, snareFlux = 0
+    for (let i = kickStart; i <= kickEnd; i++) {
+      const diff = freqBuf[i] - prevFreq[i]
+      if (diff > 0) kickFlux += diff
+    }
+    for (let i = snareStart; i <= snareEnd; i++) {
+      const diff = freqBuf[i] - prevFreq[i]
+      if (diff > 0) snareFlux += diff
+    }
+    kickFlux  /= (kickEnd  - kickStart  + 1)
+    snareFlux /= (snareEnd - snareStart + 1)
 
-    // Log to graph buffer
-    graphLog[graphIdx % GRAPH_SIZE] = { kick: kickEnergy, snare: snareEnergy, ratio, beat }
+    // Combined flux: kick weighted higher
+    const flux = kickFlux * 0.7 + snareFlux * 0.3
+
+    prevFreq = freqBuf.slice()
+
+    debugEnergy.value = {
+      kick:  +kickFlux.toFixed(2),
+      snare: +snareFlux.toFixed(2),
+      flux:  +flux.toFixed(2),
+    }
+
+    const now  = audioCtx.currentTime
+    const gap  = now - lastOnsetTime
+    const beat = flux > FLUX_THRESHOLD && gap > MIN_ONSET_INTERVAL
+
+    graphLog[graphIdx % GRAPH_SIZE] = { kick: kickFlux, snare: snareFlux, flux, beat }
     graphIdx++
 
     if (beat) {
@@ -124,7 +121,6 @@ export function useMicSync(songBpm) {
             )
           }
 
-          // Output smoothing: median of last BPM_OUTPUT_HISTORY estimates
           bpmEstimates.push(candidate)
           if (bpmEstimates.length > BPM_OUTPUT_HISTORY) bpmEstimates.shift()
           const outSorted = [...bpmEstimates].sort((a, b) => a - b)
@@ -140,17 +136,15 @@ export function useMicSync(songBpm) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)()
     analyser = audioCtx.createAnalyser()
     analyser.fftSize = 1024
-    analyser.smoothingTimeConstant = 0.2 // default 0.8 kills transients — need sharp hits
+    analyser.smoothingTimeConstant = 0.2
     computeBinRanges()
-    frameCount = 0
-    histIdx    = 0
-    kickHistory .fill(0)
-    snareHistory.fill(0)
+    prevFreq       = new Uint8Array(analyser.frequencyBinCount).fill(0)
+    frameCount     = 0
     onsetTimes.length   = 0
     bpmEstimates.length = 0
-    lastOnsetTime = -Infinity
+    lastOnsetTime  = -Infinity
     graphIdx = 0
-    graphLog.forEach(g => { g.kick = 0; g.snare = 0; g.ratio = 0; g.beat = false })
+    graphLog.forEach(g => { g.kick = 0; g.snare = 0; g.flux = 0; g.beat = false })
     micActive.value = true
     audioCtx.resume()
     rafId = requestAnimationFrame(processAudio)
@@ -160,16 +154,14 @@ export function useMicSync(songBpm) {
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       _initAnalyser()
-      const source = audioCtx.createMediaStreamSource(stream)
-      source.connect(analyser)
+      audioCtx.createMediaStreamSource(stream).connect(analyser)
     } catch (err) {
       console.warn('Mic access failed:', err)
     }
   }
 
   async function startWithFile(file) {
-    const url   = URL.createObjectURL(file)
-    const audio = new Audio(url)
+    const audio = new Audio(URL.createObjectURL(file))
     audio.crossOrigin = 'anonymous'
     _initAnalyser()
     const source = audioCtx.createMediaElementSource(audio)
@@ -179,11 +171,11 @@ export function useMicSync(songBpm) {
   }
 
   function stopMicSync() {
-    if (rafId)   { cancelAnimationFrame(rafId); rafId = null }
-    if (stream)  { stream.getTracks().forEach(t => t.stop()); stream = null }
-    if (audioCtx){ audioCtx.close(); audioCtx = null }
-    analyser        = null
-    micActive.value = false
+    if (rafId)    { cancelAnimationFrame(rafId); rafId = null }
+    if (stream)   { stream.getTracks().forEach(t => t.stop()); stream = null }
+    if (audioCtx) { audioCtx.close(); audioCtx = null }
+    analyser          = null
+    micActive.value   = false
     detectedBPM.value = null
   }
 
@@ -200,15 +192,6 @@ export function useMicSync(songBpm) {
     ctx.strokeStyle = 'rgba(255,255,255,0.1)'
     ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(0, MID); ctx.lineTo(W, MID); ctx.stroke()
-
-    // ── Top half: ratio + threshold ──────────────────────────
-    const maxRatio = 2.5
-    const threshY = MID - (ONSET_THRESHOLD / maxRatio) * MID
-    ctx.strokeStyle = 'rgba(255,220,0,0.7)'
-    ctx.setLineDash([5, 5])
-    ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(W, threshY); ctx.stroke()
-    ctx.setLineDash([])
 
     // Beat flashes (full height)
     ctx.fillStyle = 'rgba(255,80,80,0.2)'
@@ -231,24 +214,25 @@ export function useMicSync(songBpm) {
       ctx.stroke()
     }
 
-    // Ratio (top half)
-    drawLine('rgba(255,255,255,0.9)', e => e.ratio, 0, MID, maxRatio)
+    // ── Top half: combined flux + threshold ──────────────────
+    const maxFlux = Math.max(FLUX_THRESHOLD * 3, ...graphLog.map(g => g.flux))
+    const threshY = MID - (FLUX_THRESHOLD / maxFlux) * MID
+    ctx.strokeStyle = 'rgba(255,220,0,0.7)'
+    ctx.setLineDash([5, 5])
+    ctx.lineWidth = 1
+    ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(W, threshY); ctx.stroke()
+    ctx.setLineDash([])
 
-    // ── Bottom half: kick + snare, auto-scaled ────────────────
-    let maxKick = 0.001, maxSnare = 0.001
-    for (let i = 0; i < GRAPH_SIZE; i++) {
-      const e = graphLog[(graphIdx + i) % GRAPH_SIZE]
-      if (e.kick  > maxKick)  maxKick  = e.kick
-      if (e.snare > maxSnare) maxSnare = e.snare
-    }
-    const maxDrum = Math.max(maxKick, maxSnare) * 1.1 // shared scale, 10% headroom
+    drawLine('rgba(255,255,255,0.9)', e => e.flux, 0, MID, maxFlux)
 
-    drawLine('rgba(0,200,255,0.9)',  e => e.kick,  MID, MID, maxDrum)
-    drawLine('rgba(255,140,0,0.9)',  e => e.snare, MID, MID, maxDrum)
+    // ── Bottom half: kick + snare flux, auto-scaled ──────────
+    const maxDrum = Math.max(1, ...graphLog.map(g => Math.max(g.kick, g.snare))) * 1.1
+    drawLine('rgba(0,200,255,0.9)', e => e.kick,  MID, MID, maxDrum)
+    drawLine('rgba(255,140,0,0.9)', e => e.snare, MID, MID, maxDrum)
 
     // Labels
     ctx.font = '10px monospace'
-    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText('ratio',  4, 12)
+    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText('flux',   4, 12)
     ctx.fillStyle = 'rgba(255,220,0,0.8)';   ctx.fillText('thresh', 4, 24)
     ctx.fillStyle = 'rgba(0,200,255,0.9)';   ctx.fillText('kick',   4, MID + 14)
     ctx.fillStyle = 'rgba(255,140,0,0.9)';   ctx.fillText('snare',  4, MID + 26)

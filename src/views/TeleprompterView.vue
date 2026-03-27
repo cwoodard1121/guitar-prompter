@@ -156,7 +156,7 @@
         <span class="mic-sep">·</span>
         <label class="mic-file-label">📁 test file<input type="file" accept="audio/*" class="mic-file-input" @change="e => startWithFile(e.target.files[0])" /></label>
         <span v-if="micActive" class="mic-sep">·</span>
-        <span v-if="micActive" class="mic-debug">k:{{ debugEnergy.kick }} s:{{ debugEnergy.snare }} r:{{ debugEnergy.ratio }}</span>
+        <span v-if="micActive" class="mic-debug">k:{{ debugEnergy.kick }} s:{{ debugEnergy.snare }} f:{{ debugEnergy.flux }}</span>
       </template>
     </div>
     <canvas v-if="isDev && micActive" ref="graphCanvas" width="480" height="120" class="mic-graph"></canvas>
