@@ -151,7 +151,7 @@
         <span class="lyric-sep">heard:</span>
         <span class="lyric-heard">"{{ lastTranscript.slice(0, 35) }}"</span>
         <span class="lyric-sep">→</span>
-        <span class="lyric-matched-text">"{{ matchedLine.text.replace(/\[.*?\]/g,'').trim().slice(0,35) }}"</span>
+        <span class="lyric-matched-text">"{{ matchedLine.cleanText?.slice(0,35) }}"</span>
         <span class="lyric-conf" :class="confClass">{{ matchConfidence }}%</span>
       </template>
       <template v-else-if="lyricActive && lastTranscript">
@@ -172,6 +172,8 @@
         <template v-if="lyricActive">
           <span class="lyric-sep">·</span>
           <span class="lyric-debug">chunks:{{ lyricDebug.chunksSent }} score:{{ lyricDebug.lastScore }} Δ{{ lyricDebug.lastDelta }}s</span>
+          <span v-if="lyricDebug.heardWords" class="lyric-debug"> | heard: {{ lyricDebug.heardWords }}</span>
+          <span v-if="lyricDebug.matchedWords" class="lyric-debug"> vs: {{ lyricDebug.matchedWords }}</span>
           <span v-if="lyricDebug.error" class="lyric-error"> {{ lyricDebug.error }}</span>
         </template>
       </template>
@@ -400,7 +402,9 @@ const lineTimings = computed(() =>
 )
 const hasSync = computed(() => lineTimings.value.some(t => t !== null))
 const hasBpm = computed(() => !hasSync.value && !!song.value?.bpm)
-const syncMode = computed(() => (hasSync.value || hasBpm.value) && syncEnabled.value)
+const syncMode = computed(() =>
+  ((hasSync.value || hasBpm.value) && syncEnabled.value) || lyricSyncMode.value
+)
 
 // BPM mode: build synthetic timings from beat clock
 // One lyric line per beatsPerLine beats
@@ -513,11 +517,11 @@ function startSyncTick() {
   if (syncRafId) return
   function tick(now) {
     if (!syncMode.value) { syncRafId = null; return }
-    if (ytPlayer && ytReady.value) {
-      // YouTube is the clock — reflect seeks instantly
+    if (ytPlayer && ytReady.value && !lyricSyncMode.value) {
+      // YouTube is the clock — but not when lyric sync is driving position
       elapsed.value = ytPlayer.getCurrentTime() + syncOffset.value
     } else if (scrolling.value && playStartTime.value !== null) {
-      // No YouTube — advance by wall clock only while playing
+      // Wall clock — lyric sync mode always uses this path
       elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
     }
     syncRafId = requestAnimationFrame(tick)
@@ -742,11 +746,10 @@ function showFlash(type) {
 watch(initialSeek, (targetTime) => {
   if (targetTime === null) return
   initialSeek.value = null  // consume
-  applySeek(targetTime)
-  // Start scroll/sync — set state then kick the tick directly since
-  // the syncMode watcher fires async and may miss the first RAF frame
-  syncEnabled.value = true
+  // Wall-clock: set where we are, then kick the tick directly
+  // (don't touch syncEnabled — that would open YouTube)
   playStartTime.value = performance.now() - targetTime * 1000
+  elapsed.value = targetTime
   scrolling.value = true
   startSyncTick()
   showFlash('locked')

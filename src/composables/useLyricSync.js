@@ -120,7 +120,7 @@ function matchScore(singleWords, bufferWords, lineWords) {
 export function useLyricSync(lrcLines, currentElapsed) {
   const lyricActive    = ref(false)
   const lastTranscript = ref('')          // most recent chunk text from Whisper
-  const matchedLine    = ref(null)        // { idx, text, time, score } or null
+  const matchedLine    = ref(null)        // { idx, text, cleanText, time, score } or null
   const suggestedSeek  = ref(null)        // seconds to seek to (drift correction), or null
   const initialSeek    = ref(null)        // first-lock seek: starts the clock from here
   const lyricLocked    = ref(false)       // true once initial lock has fired
@@ -211,12 +211,17 @@ export function useLyricSync(lrcLines, currentElapsed) {
     }
 
     debugInfo.value.lastScore = +bestScore.toFixed(3)
+    debugInfo.value.heardWords = singleWords.join(' ')
+    debugInfo.value.matchedWords = bestIdx !== -1
+      ? normalize(lines[bestIdx].text?.replace(/\[.*?\]/g, '') ?? '').join(' ')
+      : ''
 
     if (bestScore >= DISPLAY_THRESHOLD && bestIdx !== -1) {
       const line = lines[bestIdx]
       // Seek target: matched line time + audio latency = where we should be right now
       const seekTarget = line.time + audioAge
-      matchedLine.value = { idx: bestIdx, text: line.text, time: line.time, score: bestScore }
+      const cleanText = line.text?.replace(/\[.*?\]/g, '').trim()
+      matchedLine.value = { idx: bestIdx, text: line.text, cleanText, time: line.time, score: bestScore }
 
       // delta vs current position (after latency correction)
       const delta = seekTarget - nowElapsed
