@@ -5,21 +5,38 @@ import OpenAI from 'openai'
 import fs from 'fs'
 import path from 'path'
 
-const CHORD_PROMPT = (title, artist) =>
-  `You are a guitar chord assistant for simple strumming songs (country, folk, pop). Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
+const CHORD_PROMPT_WITH_LYRICS = (title, artist, lyrics) =>
+  `You are a guitar chord assistant. Add chord annotations to the lyrics of "${title}"${artist ? ` by ${artist}` : ''}.
 
-Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. Do NOT use power chord notation (no A5, E5, etc.) and do NOT use tab notation. Keep it playable by a casual guitarist who reads chord names.
+Use standard open or barre chord names only (G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc.). No power chords, no tab notation. Use the real chord progression for this song.
 
-Use the real chord progression for the song. For the lyric lines, write simplified placeholder syllables (like "da da da" or "la la la") that match the rhythm and syllable count — do NOT reproduce any copyrighted lyrics.
+Put chord names in [brackets] on lines ABOVE the lyric line they apply to, aligned to the syllable where the chord changes:
 
-Format: put chord names in [brackets] on lines ABOVE the lyric placeholder they apply to, aligned to the syllable position:
+[G]           [Cadd9]      [D]
+Here comes the sun        little darling
+[G]           [D]          [Em]
+It's been a long cold lonely winter
+
+Annotate verse 1 and the chorus. Output only the chord/lyric text, no explanations.
+
+Lyrics:
+${lyrics.slice(0, 3000)}`
+
+const CHORD_PROMPT_FALLBACK = (title, artist) =>
+  `You are a guitar chord assistant. Generate a chord chart for "${title}"${artist ? ` by ${artist}` : ''}.
+
+Use standard open or barre chord names only — like G, Cadd9, D, Em, E7, Dsus2, A, Bm, F, etc. No power chords, no tab notation.
+
+Use the real chord progression for the song. For lyric lines write simplified placeholder syllables (da da da, la la la) matching the rhythm — do NOT reproduce copyrighted lyrics.
+
+Format: chord names in [brackets] above the syllable line they apply to:
 
 [G]           [Cadd9]      [D]
 da da-da da   da da-da da  da da
-[G]           [D]          [Em]
-da da-da da   da da-da da  da-da-da
 
-Only output the chord/lyric text, no explanations. Cover one verse and one chorus. Use the accurate chords for this song.`
+Only output the chord/lyric text, no explanations. Cover one verse and one chorus.`
+
+const CHORD_PROMPT = CHORD_PROMPT_FALLBACK  // used by /api/chords validate path
 
 const VALIDATE_PROMPT = (content) =>
   `You are a guitar chord formatter. The user has pasted a tab and it has been auto-formatted into bracket chord notation. Review it and fix any issues.
@@ -112,6 +129,87 @@ function apiMiddlewarePlugin(env) {
   return {
     name: 'api-middleware',
     configureServer(server) {
+      server.middlewares.use('/api/transcribe', async (req, res) => {
+        const send = (code, data) => {
+          res.statusCode = code
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(data))
+        }
+        if (req.method !== 'POST') return send(405, { error: 'method not allowed' })
+
+        const apiKey = env.OPENAI_API_KEY
+        if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
+
+        let body = ''
+        await new Promise((resolve, reject) => {
+          req.on('data', chunk => { body += chunk })
+          req.on('end', resolve)
+          req.on('error', reject)
+        })
+
+        let parsed
+        try { parsed = JSON.parse(body) } catch { return send(400, { error: 'Invalid JSON' }) }
+        const { audio, mimeType } = parsed || {}
+        if (!audio) return send(400, { error: 'audio is required' })
+
+        try {
+          const buffer = Buffer.from(audio, 'base64')
+          const ext    = mimeType?.includes('mp4') ? 'mp4' : 'webm'
+          const file   = await toFile(buffer, `chunk.${ext}`, { type: mimeType || 'audio/webm' })
+          const client = new OpenAI({ apiKey })
+          const result = await client.audio.transcriptions.create({ model: 'whisper-1', file })
+          return send(200, { text: result.text || '' })
+        } catch (err) {
+          return send(500, { error: err.message })
+        }
+      })
+
+      server.middlewares.use('/api/lyrics', async (req, res) => {
+        const send = (code, data) => {
+          res.statusCode = code
+          res.setHeader('Content-Type', 'application/json')
+          res.end(JSON.stringify(data))
+        }
+
+        const apiKey = env.OPENAI_API_KEY
+        if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
+
+        const url = new URL(req.url, 'http://localhost')
+        const title = url.searchParams.get('title') || ''
+        const artist = url.searchParams.get('artist') || ''
+        if (!title) return send(400, { error: 'title is required' })
+
+        // Step 1: try to fetch plain lyrics from lrclib
+        let plainLyrics = null
+        try {
+          const params = new URLSearchParams({ artist_name: artist, track_name: title })
+          const lrcRes = await fetch(`https://lrclib.net/api/get?${params}`, {
+            headers: { 'Lrclib-Client': 'guitar-portal/1.0' }
+          })
+          if (lrcRes.ok) {
+            const lrcData = await lrcRes.json()
+            plainLyrics = lrcData.plainLyrics || null
+          }
+        } catch { /* fall through */ }
+
+        const prompt = plainLyrics
+          ? CHORD_PROMPT_WITH_LYRICS(title, artist, plainLyrics)
+          : CHORD_PROMPT_FALLBACK(title, artist)
+
+        try {
+          const client = new OpenAI({ apiKey })
+          const completion = await client.chat.completions.create({
+            model: 'o4-mini',
+            max_completion_tokens: 4096,
+            reasoning_effort: 'low',
+            messages: [{ role: 'user', content: prompt }]
+          })
+          return send(200, { content: completion.choices[0]?.message?.content || '', hadLyrics: !!plainLyrics })
+        } catch (err) {
+          return send(500, { error: err.message })
+        }
+      })
+
       server.middlewares.use('/api/chords', async (req, res) => {
         const send = (code, data) => {
           res.statusCode = code
@@ -170,8 +268,8 @@ export default defineConfig(({ mode }) => {
       registerType: 'autoUpdate',
       includeAssets: ['favicon.svg', 'guitar-icon-192.png', 'guitar-icon-512.png'],
       manifest: {
-        name: 'Guitar Prompter',
-        short_name: 'GuitarP',
+        name: 'Guitar Portal',
+        short_name: 'Guitar Portal',
         description: 'Guitar teleprompter with chords and lyrics',
         theme_color: '#1a1a2e',
         background_color: '#1a1a2e',
