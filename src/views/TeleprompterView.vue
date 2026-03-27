@@ -156,10 +156,28 @@
         <span class="mic-sep">·</span>
         <label class="mic-file-label">📁 test file<input type="file" accept="audio/*" class="mic-file-input" @change="e => startWithFile(e.target.files[0])" /></label>
         <span v-if="micActive" class="mic-sep">·</span>
-        <span v-if="micActive" class="mic-debug">k:{{ debugEnergy.kick }} s:{{ debugEnergy.snare }} hh:{{ debugEnergy.hihat }} kZ:{{ debugEnergy.kickZ }}</span>
+        <span v-if="micActive" class="mic-debug">flux:{{ debugEnergy.flux }} z:{{ debugEnergy.z }}</span>
       </template>
     </div>
     <canvas v-if="isDev && micActive" ref="graphCanvas" width="480" height="120" class="mic-graph"></canvas>
+    <div v-if="isDev && micMode" class="mic-sliders">
+      <label class="slider-row">
+        <span>freqLow <b>{{ freqLow }}</b> Hz</span>
+        <input type="range" min="500" max="15000" step="100" :value="freqLow" @input="e => { freqLow.value = +e.target.value; recomputeBins() }" />
+      </label>
+      <label class="slider-row">
+        <span>freqHigh <b>{{ freqHigh }}</b> Hz</span>
+        <input type="range" min="500" max="20000" step="100" :value="freqHigh" @input="e => { freqHigh.value = +e.target.value; recomputeBins() }" />
+      </label>
+      <label class="slider-row">
+        <span>zThresh <b>{{ zThresh }}</b></span>
+        <input type="range" min="0.5" max="8" step="0.1" :value="zThresh" @input="e => zThresh.value = +e.target.value" />
+      </label>
+      <label class="slider-row">
+        <span>minInterval <b>{{ minInterval }}</b>s</span>
+        <input type="range" min="0.05" max="1.0" step="0.01" :value="minInterval" @input="e => minInterval.value = +e.target.value" />
+      </label>
+    </div>
 
     <!-- Song position dots (above play bar, sync mode only) -->
     <div v-if="syncMode" class="tp-seek-bar" @click="seekByClick" @touchstart.passive="onSeekTouchStart" @touchend="seekByTouch">
@@ -252,7 +270,8 @@ function loadSavedOffset() {
 // --- Mic sync mode ---
 const micMode = ref(false)
 const songBpmRef = computed(() => song.value?.bpm ?? null)
-const { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence, debugEnergy, drawGraph } = useMicSync(songBpmRef)
+const { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence, debugEnergy, drawGraph,
+  freqLow, freqHigh, zThresh, minInterval, recomputeBins } = useMicSync(songBpmRef)
 const graphCanvas = ref(null)
 let graphRafId = null
 watch(micActive, (active) => {
@@ -1182,4 +1201,34 @@ onUnmounted(() => {
   z-index: 50;
   pointer-events: none;
 }
+
+.mic-sliders {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) + 6.5rem + 128px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: rgba(0,0,0,0.75);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 10px;
+  padding: 0.6rem 1rem;
+  z-index: 51;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 300px;
+}
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.72rem;
+  color: #aaa;
+  font-family: monospace;
+  cursor: default;
+}
+
+.slider-row span { min-width: 130px; }
+.slider-row b { color: #ddd; }
+.slider-row input[type=range] { flex: 1; accent-color: #b464ff; }
 </style>
