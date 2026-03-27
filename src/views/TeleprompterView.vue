@@ -518,7 +518,11 @@ let syncRafId = null
 function startSyncTick() {
   if (syncRafId) return
   function tick(now) {
-    if (!syncMode.value) { syncRafId = null; return }
+    // Keep ticking as long as syncMode is active OR wall-clock scroll is live
+    // (handles transition out of lyricSyncMode after a lock has been established)
+    if (!syncMode.value && !(scrolling.value && playStartTime.value !== null)) {
+      syncRafId = null; return
+    }
     if (lyricSyncMode.value && playStartTime.value !== null) {
       // Lyric sync owns the clock — advance wall-clock unconditionally
       elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
@@ -772,8 +776,11 @@ watch(suggestedSeek, (targetTime) => {
 
 async function toggleLyricSync() {
   if (lyricSyncMode.value) {
+    const wasLocked = lyricLocked.value
     lyricSyncMode.value = false
-    scrolling.value = false
+    // If we established a lock, keep scrolling — wall-clock branch takes over in tick
+    // If we never locked, nothing useful is playing so stop
+    if (!wasLocked) scrolling.value = false
     stopLyricSync()
   } else {
     lyricSyncMode.value = true
