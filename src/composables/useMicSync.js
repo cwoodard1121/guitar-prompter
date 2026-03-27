@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 // regardless of the background level — no rolling average needed.
 
 const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats
-const FLUX_THRESHOLD     = 8     // flux spike (0–255 scale) needed to register a beat
+const FLUX_THRESHOLD     = 4     // flux spike (0–255 scale) needed to register a beat
 const ONSET_WINDOW       = 10    // onsets kept for BPM interval calculation
 const BPM_OUTPUT_HISTORY = 8     // median of last N BPM estimates for stable display
 const GRAPH_SIZE         = 300   // frames of scrolling graph history
@@ -189,53 +189,72 @@ export function useMicSync(songBpm) {
     ctx.fillRect(0, 0, W, H)
 
     // Divider
-    ctx.strokeStyle = 'rgba(255,255,255,0.1)'
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)'
     ctx.lineWidth = 1
     ctx.beginPath(); ctx.moveTo(0, MID); ctx.lineTo(W, MID); ctx.stroke()
 
-    // Beat flashes (full height)
-    ctx.fillStyle = 'rgba(255,80,80,0.2)'
+    // Beat flashes — bright solid lines
     for (let i = 0; i < GRAPH_SIZE; i++) {
       if (graphLog[(graphIdx + i) % GRAPH_SIZE].beat) {
-        ctx.fillRect((i / GRAPH_SIZE) * W - 1, 0, 3, H)
+        const x = (i / GRAPH_SIZE) * W
+        ctx.fillStyle = 'rgba(255,60,60,0.6)'
+        ctx.fillRect(x - 1, 0, 3, H)
+        // Extra bright dot at top
+        ctx.fillStyle = '#fff'
+        ctx.fillRect(x - 2, 0, 5, 4)
       }
     }
 
-    const drawLine = (color, getter, top, height, maxVal) => {
+    // Smooth helper: apply simple moving average before drawing
+    const smooth = (getter, windowSize = 5) => {
+      const vals = []
+      for (let i = 0; i < GRAPH_SIZE; i++) vals.push(getter(graphLog[(graphIdx + i) % GRAPH_SIZE]))
+      const smoothed = vals.map((_, i) => {
+        let sum = 0, count = 0
+        for (let j = Math.max(0, i - windowSize); j <= Math.min(GRAPH_SIZE - 1, i + windowSize); j++) {
+          sum += vals[j]; count++
+        }
+        return sum / count
+      })
+      return smoothed
+    }
+
+    const drawSmoothed = (color, values, top, height, maxVal, lineWidth = 2) => {
       ctx.strokeStyle = color
-      ctx.lineWidth = 2
+      ctx.lineWidth = lineWidth
       ctx.beginPath()
-      for (let i = 0; i < GRAPH_SIZE; i++) {
-        const val = getter(graphLog[(graphIdx + i) % GRAPH_SIZE])
+      values.forEach((val, i) => {
         const x = (i / GRAPH_SIZE) * W
         const y = top + height - Math.min(1, val / maxVal) * height
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-      }
+      })
       ctx.stroke()
     }
 
-    // ── Top half: combined flux + threshold ──────────────────
-    const maxFlux = Math.max(FLUX_THRESHOLD * 3, ...graphLog.map(g => g.flux))
+    // ── Top half: flux (white) + threshold (yellow) ──────────
+    const maxFlux = Math.max(FLUX_THRESHOLD * 4, ...graphLog.map(g => g.flux))
     const threshY = MID - (FLUX_THRESHOLD / maxFlux) * MID
-    ctx.strokeStyle = 'rgba(255,220,0,0.7)'
-    ctx.setLineDash([5, 5])
-    ctx.lineWidth = 1
+
+    ctx.strokeStyle = 'rgba(255,220,0,0.8)'
+    ctx.setLineDash([6, 4])
+    ctx.lineWidth = 1.5
     ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(W, threshY); ctx.stroke()
     ctx.setLineDash([])
 
-    drawLine('rgba(255,255,255,0.9)', e => e.flux, 0, MID, maxFlux)
+    drawSmoothed('rgba(255,255,255,0.95)', smooth(e => e.flux, 3), 0, MID, maxFlux, 2.5)
 
-    // ── Bottom half: kick + snare flux, auto-scaled ──────────
+    // ── Bottom half: kick (cyan) + snare (orange), auto-scaled
     const maxDrum = Math.max(1, ...graphLog.map(g => Math.max(g.kick, g.snare))) * 1.1
-    drawLine('rgba(0,200,255,0.9)', e => e.kick,  MID, MID, maxDrum)
-    drawLine('rgba(255,140,0,0.9)', e => e.snare, MID, MID, maxDrum)
+    drawSmoothed('rgba(0,200,255,0.9)',  smooth(e => e.kick,  3), MID, MID, maxDrum)
+    drawSmoothed('rgba(255,140,0,0.9)',  smooth(e => e.snare, 3), MID, MID, maxDrum)
 
-    // Labels
-    ctx.font = '10px monospace'
-    ctx.fillStyle = 'rgba(255,255,255,0.6)'; ctx.fillText('flux',   4, 12)
-    ctx.fillStyle = 'rgba(255,220,0,0.8)';   ctx.fillText('thresh', 4, 24)
-    ctx.fillStyle = 'rgba(0,200,255,0.9)';   ctx.fillText('kick',   4, MID + 14)
-    ctx.fillStyle = 'rgba(255,140,0,0.9)';   ctx.fillText('snare',  4, MID + 26)
+    // Labels — top half
+    ctx.font = 'bold 10px monospace'
+    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillText('FLUX (cross thresh = beat)', 4, 11)
+    ctx.fillStyle = 'rgba(255,220,0,0.9)';   ctx.fillText(`thresh=${FLUX_THRESHOLD}`,   4, 23)
+    // Labels — bottom half
+    ctx.fillStyle = 'rgba(0,200,255,0.9)';   ctx.fillText('kick',  4, MID + 13)
+    ctx.fillStyle = 'rgba(255,140,0,0.9)';   ctx.fillText('snare', 4, MID + 25)
   }
 
   const bpmConfidence = computed(() => {
