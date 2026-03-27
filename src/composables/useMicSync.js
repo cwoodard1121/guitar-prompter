@@ -40,10 +40,8 @@ export function useMicSync(songBpm) {
 
   function computeBinRanges() {
     const binWidth = audioCtx.sampleRate / analyser.fftSize
-    kickStart  = Math.max(1, Math.round(50  / binWidth))
-    kickEnd    = Math.round(150 / binWidth)
-    snareStart = kickEnd + 1
-    snareEnd   = Math.round(350 / binWidth)
+    kickStart  = Math.max(1, Math.round(50 / binWidth))
+    kickEnd    = Math.round(80 / binWidth)
   }
 
   function processAudio() {
@@ -62,20 +60,14 @@ export function useMicSync(songBpm) {
 
     // Spectral flux: sum of positive energy increases per band
     // Values are 0–255 per bin, normalized by bin count → flux range ~0–255
-    let kickFlux = 0, snareFlux = 0
+    let kickFlux = 0
     for (let i = kickStart; i <= kickEnd; i++) {
       const diff = freqBuf[i] - prevFreq[i]
       if (diff > 0) kickFlux += diff
     }
-    for (let i = snareStart; i <= snareEnd; i++) {
-      const diff = freqBuf[i] - prevFreq[i]
-      if (diff > 0) snareFlux += diff
-    }
-    kickFlux  /= (kickEnd  - kickStart  + 1)
-    snareFlux /= (snareEnd - snareStart + 1)
-
-    // Combined flux: kick weighted higher
-    const flux = kickFlux * 0.7 + snareFlux * 0.3
+    kickFlux /= (kickEnd - kickStart + 1)
+    const snareFlux = 0 // snare disabled — too much vocal/guitar overlap
+    const flux = kickFlux
 
     prevFreq = freqBuf.slice()
 
