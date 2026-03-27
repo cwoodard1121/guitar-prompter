@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 
 const ENERGY_HISTORY    = 43    // ~700ms rolling average at 60fps
 const MIN_ONSET_INTERVAL = 0.25 // 240 BPM max — filters hi-hats and sub-beat noise
-const ONSET_THRESHOLD   = 1.3   // spike must be 1.3x rolling average
+const ONSET_THRESHOLD   = 0.9   // spike must be 0.9x rolling average
 const NOISE_FLOOR       = 0.003 // ignore near-silence
 const ONSET_WINDOW      = 10    // onsets kept for interval calculation
 const WARMUP_FRAMES     = ENERGY_HISTORY
@@ -39,9 +39,9 @@ export function useMicSync(songBpm) {
   function computeBinRanges() {
     const binWidth = audioCtx.sampleRate / analyser.fftSize
     kickStart  = Math.max(1, Math.round(50  / binWidth))
-    kickEnd    = Math.round(150 / binWidth)
+    kickEnd    = Math.round(200 / binWidth)
     snareStart = kickEnd + 1
-    snareEnd   = Math.round(500 / binWidth)
+    snareEnd   = Math.round(600 / binWidth)
   }
 
   function processAudio() {
