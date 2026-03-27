@@ -503,12 +503,6 @@ watch(currentSyncLine, (i) => { if (i >= 0) scrollToLineIfNeeded(i) })
 function scrollToLineIfNeeded(i) {
   const el = lineRefs.value[i]
   if (!el || !contentEl.value) return
-  if (lyricSyncMode.value) {
-    // Always keep the current line centred — lyric sync just corrected our position
-    const target = el.offsetTop - contentEl.value.clientHeight * 0.35
-    contentEl.value.scrollTop = Math.max(0, target)
-    return
-  }
   const containerRect = contentEl.value.getBoundingClientRect()
   const elRect = el.getBoundingClientRect()
   const topBound = containerRect.top + containerRect.height * 0.15
@@ -520,6 +514,37 @@ function scrollToLineIfNeeded(i) {
 }
 
 let syncRafId = null
+
+// Smooth scroll for lyric sync — called every RAF frame.
+// Interpolates scroll position between the current LRC line and the next,
+// so the display flows continuously instead of freezing between line changes.
+function lyricSyncScroll() {
+  if (!contentEl.value) return
+  const timings = activeTimings.value
+  const cur = currentSyncLine.value
+  if (cur < 0) return
+  const curEl = lineRefs.value[cur]
+  if (!curEl) return
+
+  // Find the next timed line after cur
+  let nxt = -1
+  for (let i = cur + 1; i < timings.length; i++) {
+    if (timings[i] !== null) { nxt = i; break }
+  }
+
+  const curTop = curEl.offsetTop
+  let target = curTop
+
+  if (nxt >= 0 && timings[nxt] > timings[cur]) {
+    const nxtEl = lineRefs.value[nxt]
+    if (nxtEl) {
+      const frac = Math.min(1, (elapsed.value - timings[cur]) / (timings[nxt] - timings[cur]))
+      target = curTop + frac * (nxtEl.offsetTop - curTop)
+    }
+  }
+
+  contentEl.value.scrollTop = Math.max(0, target - contentEl.value.clientHeight * 0.35)
+}
 
 // Sync tick — always runs while syncMode is on, regardless of play/pause
 // YouTube drives elapsed directly; wall-clock only advances when scrolling
@@ -534,6 +559,7 @@ function startSyncTick() {
     if (lyricSyncMode.value && playStartTime.value !== null) {
       // Lyric sync owns the clock — advance wall-clock unconditionally
       elapsed.value = (now - playStartTime.value) / 1000 + syncOffset.value
+      lyricSyncScroll()  // smooth continuous scroll every frame
     } else if (ytPlayer && ytReady.value) {
       elapsed.value = ytPlayer.getCurrentTime() + syncOffset.value
     } else if (scrolling.value && playStartTime.value !== null) {
