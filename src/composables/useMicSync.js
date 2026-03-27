@@ -1,73 +1,79 @@
 import { ref, computed } from 'vue'
 
-// General-purpose beat/tempo detection from ambient audio.
-// Works with guitar strums, drums, bass, or full band — anything rhythmic.
-// Uses onset detection across both the low-frequency sub-band (kick/bass)
-// and full-band energy, then picks the stronger signal.
+// Beat/tempo detection focused on drum frequencies.
+// Kick drum (50–150 Hz) and snare (150–500 Hz) are the primary signals.
+// Full-band is ignored — too noisy in a live band mix.
 
-const ENERGY_HISTORY = 43       // ~700ms of history at 60fps
-const MIN_ONSET_INTERVAL = 0.18 // 333 BPM max (enough for any real tempo)
-const ONSET_THRESHOLD = 1.35    // spike must be 1.35x rolling average
-const NOISE_FLOOR = 0.008       // ignore near-silence
-const ONSET_WINDOW = 10         // keep last N onsets — smaller = faster to respond
-const WARMUP_FRAMES = ENERGY_HISTORY // skip detection during initial fill
+const ENERGY_HISTORY    = 43    // ~700ms rolling average at 60fps
+const MIN_ONSET_INTERVAL = 0.25 // 240 BPM max — filters hi-hats and sub-beat noise
+const ONSET_THRESHOLD   = 1.5   // spike must be 1.5x rolling average
+const NOISE_FLOOR       = 0.01  // ignore near-silence
+const ONSET_WINDOW      = 10    // onsets kept for interval calculation
+const WARMUP_FRAMES     = ENERGY_HISTORY
+const BPM_OUTPUT_HISTORY = 8    // median of last N estimates for stable display
 
 export function useMicSync(songBpm) {
-  const micActive = ref(false)
+  const micActive   = ref(false)
   const detectedBPM = ref(null)
 
   let audioCtx = null
   let analyser = null
-  let stream = null
-  let rafId = null
+  let stream   = null
+  let rafId    = null
 
-  // Rolling energy history (circular buffer)
-  const fullHistory = new Array(ENERGY_HISTORY).fill(0)
-  const bassHistory = new Array(ENERGY_HISTORY).fill(0)
-  let histIdx = 0
+  // Per-band rolling energy (circular buffers)
+  const kickHistory  = new Array(ENERGY_HISTORY).fill(0)
+  const snareHistory = new Array(ENERGY_HISTORY).fill(0)
+  let histIdx    = 0
   let frameCount = 0
 
-  // Onset state
-  const onsetTimes = []
+  // Onset + BPM state
+  const onsetTimes  = []
+  const bpmEstimates = [] // output smoothing buffer
   let lastOnsetTime = -Infinity
+
+  // Bin ranges computed once after AudioContext is ready
+  let kickStart = 1, kickEnd = 3, snareStart = 3, snareEnd = 11
+
+  function computeBinRanges() {
+    const binWidth = audioCtx.sampleRate / analyser.fftSize
+    kickStart  = Math.max(1, Math.round(50  / binWidth))
+    kickEnd    = Math.round(150 / binWidth)
+    snareStart = kickEnd + 1
+    snareEnd   = Math.round(500 / binWidth)
+  }
 
   function processAudio() {
     if (!analyser || !audioCtx) return
 
-    const bufLen = analyser.frequencyBinCount // fftSize / 2
-    const timeBuf = new Float32Array(bufLen)
-    const freqBuf = new Uint8Array(bufLen)
-    analyser.getFloatTimeDomainData(timeBuf)
+    const freqBuf = new Uint8Array(analyser.frequencyBinCount)
     analyser.getByteFrequencyData(freqBuf)
 
-    // Full-band RMS
-    let sum = 0
-    for (let i = 0; i < bufLen; i++) sum += timeBuf[i] * timeBuf[i]
-    const fullEnergy = Math.sqrt(sum / bufLen)
+    // Kick energy (50–150 Hz)
+    let kickSum = 0
+    for (let i = kickStart; i <= kickEnd; i++) kickSum += (freqBuf[i] / 255) ** 2
+    const kickEnergy = Math.sqrt(kickSum / (kickEnd - kickStart + 1))
 
-    // Low-frequency energy (kick/bass range ~20–250 Hz)
-    // At 44100 Hz, fftSize 1024 → bin width ≈ 43 Hz → bins 0–5 cover ~250 Hz
-    const bassEnd = Math.floor(250 / (audioCtx.sampleRate / analyser.fftSize))
-    let bassSum = 0
-    for (let i = 0; i <= bassEnd; i++) bassSum += (freqBuf[i] / 255) ** 2
-    const bassEnergy = Math.sqrt(bassSum / (bassEnd + 1))
+    // Snare energy (150–500 Hz)
+    let snareSum = 0
+    for (let i = snareStart; i <= snareEnd; i++) snareSum += (freqBuf[i] / 255) ** 2
+    const snareEnergy = Math.sqrt(snareSum / (snareEnd - snareStart + 1))
 
-    // Update circular history
-    fullHistory[histIdx % ENERGY_HISTORY] = fullEnergy
-    bassHistory[histIdx % ENERGY_HISTORY] = bassEnergy
+    kickHistory [histIdx % ENERGY_HISTORY] = kickEnergy
+    snareHistory[histIdx % ENERGY_HISTORY] = snareEnergy
     histIdx++
     frameCount++
 
-    // Skip until history is warm
     if (frameCount < WARMUP_FRAMES) { rafId = requestAnimationFrame(processAudio); return }
 
-    const avgFull = fullHistory.reduce((a, b) => a + b, 0) / ENERGY_HISTORY
-    const avgBass = bassHistory.reduce((a, b) => a + b, 0) / ENERGY_HISTORY
+    const avgKick  = kickHistory .reduce((a, b) => a + b, 0) / ENERGY_HISTORY
+    const avgSnare = snareHistory.reduce((a, b) => a + b, 0) / ENERGY_HISTORY
 
-    // Pick whichever sub-band has a stronger relative spike
-    const fullRatio = avgFull > NOISE_FLOOR ? fullEnergy / avgFull : 0
-    const bassRatio = avgBass > NOISE_FLOOR ? bassEnergy / avgBass : 0
-    const ratio = Math.max(fullRatio, bassRatio)
+    const kickRatio  = avgKick  > NOISE_FLOOR ? kickEnergy  / avgKick  : 0
+    const snareRatio = avgSnare > NOISE_FLOOR ? snareEnergy / avgSnare : 0
+
+    // Kick weighted higher — it's the more reliable beat marker
+    const ratio = kickRatio * 0.7 + snareRatio * 0.3
 
     const now = audioCtx.currentTime
     const gap = now - lastOnsetTime
@@ -81,20 +87,19 @@ export function useMicSync(songBpm) {
         const intervals = []
         for (let i = 1; i < onsetTimes.length; i++) {
           const iv = onsetTimes[i] - onsetTimes[i - 1]
-          if (iv >= 0.25 && iv <= 2.0) intervals.push(iv) // 30–240 BPM
+          if (iv >= 0.25 && iv <= 2.0) intervals.push(iv)
         }
         if (intervals.length >= 2) {
           const sorted = [...intervals].sort((a, b) => a - b)
           const median = sorted[Math.floor(sorted.length / 2)]
           let candidate = Math.round(60 / median)
 
-          // Octave correction: snare/kick patterns often cause half-time detection.
-          // If song BPM is known and candidate is way off, try ×2 or ÷2.
+          // Octave correction using song BPM as reference
           const ref = typeof songBpm?.value !== 'undefined' ? songBpm.value : songBpm
           if (ref) {
+            const options = [candidate]
             const doubled = candidate * 2
             const halved  = Math.round(candidate / 2)
-            const options = [candidate]
             if (doubled >= 30 && doubled <= 240) options.push(doubled)
             if (halved  >= 30 && halved  <= 240) options.push(halved)
             candidate = options.reduce((a, b) =>
@@ -102,7 +107,11 @@ export function useMicSync(songBpm) {
             )
           }
 
-          detectedBPM.value = candidate
+          // Output smoothing: median of last BPM_OUTPUT_HISTORY estimates
+          bpmEstimates.push(candidate)
+          if (bpmEstimates.length > BPM_OUTPUT_HISTORY) bpmEstimates.shift()
+          const outSorted = [...bpmEstimates].sort((a, b) => a - b)
+          detectedBPM.value = outSorted[Math.floor(outSorted.length / 2)]
         }
       }
     }
@@ -114,11 +123,13 @@ export function useMicSync(songBpm) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)()
     analyser = audioCtx.createAnalyser()
     analyser.fftSize = 1024
+    computeBinRanges()
     frameCount = 0
-    histIdx = 0
-    fullHistory.fill(0)
-    bassHistory.fill(0)
-    onsetTimes.length = 0
+    histIdx    = 0
+    kickHistory .fill(0)
+    snareHistory.fill(0)
+    onsetTimes.length   = 0
+    bpmEstimates.length = 0
     lastOnsetTime = -Infinity
     micActive.value = true
     rafId = requestAnimationFrame(processAudio)
@@ -136,26 +147,25 @@ export function useMicSync(songBpm) {
   }
 
   async function startWithFile(file) {
-    const url = URL.createObjectURL(file)
+    const url   = URL.createObjectURL(file)
     const audio = new Audio(url)
     audio.crossOrigin = 'anonymous'
     _initAnalyser()
     const source = audioCtx.createMediaElementSource(audio)
     source.connect(analyser)
-    source.connect(audioCtx.destination) // so you can hear it
+    source.connect(audioCtx.destination)
     audio.play()
   }
 
   function stopMicSync() {
-    if (rafId) { cancelAnimationFrame(rafId); rafId = null }
-    if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null }
-    if (audioCtx) { audioCtx.close(); audioCtx = null }
-    analyser = null
+    if (rafId)   { cancelAnimationFrame(rafId); rafId = null }
+    if (stream)  { stream.getTracks().forEach(t => t.stop()); stream = null }
+    if (audioCtx){ audioCtx.close(); audioCtx = null }
+    analyser        = null
     micActive.value = false
     detectedBPM.value = null
   }
 
-  // Confidence: how closely detected BPM matches the song's stored BPM
   const bpmConfidence = computed(() => {
     const detected = detectedBPM.value
     const ref_ = typeof songBpm?.value !== 'undefined' ? songBpm.value : songBpm
