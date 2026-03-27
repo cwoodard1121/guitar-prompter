@@ -168,9 +168,12 @@ function apiMiddlewarePlugin(env) {
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), '')
-  return { plugins: [
-    songsMiddlewarePlugin(),
-    apiMiddlewarePlugin(env),
+  const useProxy = !!env.VITE_PROXY_API
+
+  return {
+    server: useProxy ? { proxy: { '/api': 'http://localhost:3000' } } : {},
+    plugins: [
+    ...(useProxy ? [] : [songsMiddlewarePlugin(), apiMiddlewarePlugin(env)]),
     vue(),
     VitePWA({
       registerType: 'autoUpdate',
@@ -210,3 +213,4 @@ export default defineConfig(({ mode }) => {
     })
   ]}
 })
+
