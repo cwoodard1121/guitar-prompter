@@ -1,55 +1,83 @@
 import { ref, computed } from 'vue'
 
-// Beat/tempo detection using spectral flux on drum frequency bands.
-// Spectral flux = energy INCREASE between consecutive frames.
-// This works in a live band mix because beats cause sudden energy jumps
-// regardless of the background level — no rolling average needed.
+// Multi-band drum detection with z-score adaptive thresholds.
+// Beat = kick fires AND (snare OR hi-hat) is also elevated.
+// This cross-band filter kills most false positives:
+//   guitar strum → hits kick band, misses hi-hat
+//   talking       → hits snare-ish range, misses kick
+//   real drum hit → kick + snare/hihat fire together
 
-const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats
-const FLUX_THRESHOLD     = 22    // flux spike (0–255 scale) needed to register a beat
-const ONSET_WINDOW       = 10    // onsets kept for BPM interval calculation
-const BPM_OUTPUT_HISTORY = 8     // median of last N BPM estimates for stable display
-const GRAPH_SIZE         = 300   // frames of scrolling graph history
-const WARMUP_FRAMES      = 5     // skip first few frames (prev buffer starts empty)
+const MIN_ONSET_INTERVAL = 0.25   // 240 BPM max
+const STATS_WINDOW       = 90     // frames for rolling mean/std (~1.5s at 60fps)
+const KICK_Z_THRESH      = 2.0    // kick must be this many std devs above its mean
+const CORR_Z_THRESH      = 1.2    // snare or hihat must also be elevated
+const ONSET_WINDOW       = 10
+const BPM_OUTPUT_HISTORY = 8
+const GRAPH_SIZE         = 300
+const WARMUP_FRAMES      = STATS_WINDOW
 
 export function useMicSync(songBpm) {
   const micActive   = ref(false)
   const detectedBPM = ref(null)
-  const debugEnergy = ref({ kick: 0, snare: 0, flux: 0 }) // dev only
+  const debugEnergy = ref({ kick: 0, snare: 0, hihat: 0, kickZ: 0 })
 
   let audioCtx = null
   let analyser = null
   let stream   = null
   let rafId    = null
 
-  // Previous frame's frequency data (for flux calculation)
-  let prevFreq = null
+  let prevFreq   = null
   let frameCount = 0
 
-  // Onset + BPM state
+  // Rolling stats buffers (circular)
+  const kickBuf  = new Array(STATS_WINDOW).fill(0)
+  const snareBuf = new Array(STATS_WINDOW).fill(0)
+  const hihatBuf = new Array(STATS_WINDOW).fill(0)
+  let statsIdx = 0
+
   const onsetTimes   = []
   const bpmEstimates = []
   let lastOnsetTime  = -Infinity
 
-  // Graph history
-  const graphLog = Array.from({ length: GRAPH_SIZE }, () => ({ kick: 0, snare: 0, flux: 0, beat: false }))
+  const graphLog = Array.from({ length: GRAPH_SIZE }, () => ({ kickZ: 0, snareZ: 0, hihatZ: 0, beat: false }))
   let graphIdx = 0
 
-  // Bin ranges computed once after AudioContext is ready
-  let kickStart = 1, kickEnd = 3, snareStart = 3, snareEnd = 11
+  let kickStart = 1, kickEnd = 2
+  let snareStart = 3, snareEnd = 8
+  let hihatStart = 50, hihatEnd = 100
 
   function computeBinRanges() {
-    const binWidth = audioCtx.sampleRate / analyser.fftSize
-    // 60–90 Hz: kick fundamental, shifted up slightly for phone mic high-pass
-    kickStart  = Math.max(1, Math.round(60 / binWidth))
-    kickEnd    = Math.round(90 / binWidth)
+    const bw = audioCtx.sampleRate / analyser.fftSize
+    kickStart  = Math.max(1, Math.round(50  / bw));  kickEnd  = Math.round(90   / bw)
+    snareStart = Math.round(180 / bw);                snareEnd = Math.round(350  / bw)
+    hihatStart = Math.round(7000 / bw);               hihatEnd = Math.round(12000 / bw)
+  }
+
+  function bandFlux(freqBuf, start, end) {
+    let f = 0
+    for (let i = start; i <= end; i++) {
+      const d = freqBuf[i] - prevFreq[i]
+      if (d > 0) f += d
+    }
+    return f / (end - start + 1)
+  }
+
+  function stats(buf) {
+    const n = buf.length
+    const mean = buf.reduce((a, b) => a + b, 0) / n
+    const variance = buf.reduce((a, b) => a + (b - mean) ** 2, 0) / n
+    return { mean, std: Math.sqrt(variance) }
+  }
+
+  function zScore(buf, val) {
+    const { mean, std } = stats(buf)
+    return std < 0.01 ? 0 : (val - mean) / std
   }
 
   function processAudio() {
     if (!analyser || !audioCtx) return
 
-    const bufLen  = analyser.frequencyBinCount
-    const freqBuf = new Uint8Array(bufLen)
+    const freqBuf = new Uint8Array(analyser.frequencyBinCount)
     analyser.getByteFrequencyData(freqBuf)
 
     frameCount++
@@ -59,30 +87,35 @@ export function useMicSync(songBpm) {
       return
     }
 
-    // Spectral flux: sum of positive energy increases per band
-    // Values are 0–255 per bin, normalized by bin count → flux range ~0–255
-    let kickFlux = 0
-    for (let i = kickStart; i <= kickEnd; i++) {
-      const diff = freqBuf[i] - prevFreq[i]
-      if (diff > 0) kickFlux += diff
-    }
-    kickFlux /= (kickEnd - kickStart + 1)
-    const snareFlux = 0 // snare disabled — too much vocal/guitar overlap
-    const flux = kickFlux
+    const kickFlux  = bandFlux(freqBuf, kickStart,  kickEnd)
+    const snareFlux = bandFlux(freqBuf, snareStart, snareEnd)
+    const hihatFlux = bandFlux(freqBuf, hihatStart, hihatEnd)
+
+    // Update rolling stats
+    kickBuf [statsIdx % STATS_WINDOW] = kickFlux
+    snareBuf[statsIdx % STATS_WINDOW] = snareFlux
+    hihatBuf[statsIdx % STATS_WINDOW] = hihatFlux
+    statsIdx++
+
+    const kickZ  = zScore(kickBuf,  kickFlux)
+    const snareZ = zScore(snareBuf, snareFlux)
+    const hihatZ = zScore(hihatBuf, hihatFlux)
 
     prevFreq = freqBuf.slice()
 
     debugEnergy.value = {
-      kick:  +kickFlux.toFixed(2),
-      snare: +snareFlux.toFixed(2),
-      flux:  +flux.toFixed(2),
+      kick: +kickFlux.toFixed(1), snare: +snareFlux.toFixed(1),
+      hihat: +hihatFlux.toFixed(1), kickZ: +kickZ.toFixed(2),
     }
 
     const now  = audioCtx.currentTime
     const gap  = now - lastOnsetTime
-    const beat = flux > FLUX_THRESHOLD && gap > MIN_ONSET_INTERVAL
+    // Kick must spike AND snare or hihat must be elevated
+    const beat = kickZ > KICK_Z_THRESH &&
+                 (snareZ > CORR_Z_THRESH || hihatZ > CORR_Z_THRESH) &&
+                 gap > MIN_ONSET_INTERVAL
 
-    graphLog[graphIdx % GRAPH_SIZE] = { kick: kickFlux, snare: snareFlux, flux, beat }
+    graphLog[graphIdx % GRAPH_SIZE] = { kickZ, snareZ, hihatZ, beat }
     graphIdx++
 
     if (beat) {
@@ -101,23 +134,17 @@ export function useMicSync(songBpm) {
           const median = sorted[Math.floor(sorted.length / 2)]
           let candidate = Math.round(60 / median)
 
-          // Octave correction using song BPM as reference
           const ref = typeof songBpm?.value !== 'undefined' ? songBpm.value : songBpm
           if (ref) {
-            const options = [candidate]
-            const doubled = candidate * 2
-            const halved  = Math.round(candidate / 2)
-            if (doubled >= 30 && doubled <= 240) options.push(doubled)
-            if (halved  >= 30 && halved  <= 240) options.push(halved)
-            candidate = options.reduce((a, b) =>
-              Math.abs(a - ref) < Math.abs(b - ref) ? a : b
-            )
+            const options = [candidate, candidate * 2, Math.round(candidate / 2)]
+              .filter(v => v >= 30 && v <= 240)
+            candidate = options.reduce((a, b) => Math.abs(a - ref) < Math.abs(b - ref) ? a : b)
           }
 
           bpmEstimates.push(candidate)
           if (bpmEstimates.length > BPM_OUTPUT_HISTORY) bpmEstimates.shift()
-          const outSorted = [...bpmEstimates].sort((a, b) => a - b)
-          detectedBPM.value = outSorted[Math.floor(outSorted.length / 2)]
+          const s = [...bpmEstimates].sort((a, b) => a - b)
+          detectedBPM.value = s[Math.floor(s.length / 2)]
         }
       }
     }
@@ -128,16 +155,16 @@ export function useMicSync(songBpm) {
   function _initAnalyser() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)()
     analyser = audioCtx.createAnalyser()
-    analyser.fftSize = 2048 // finer freq resolution (~21 Hz/bin vs 43 Hz/bin)
+    analyser.fftSize = 2048
     analyser.smoothingTimeConstant = 0.2
     computeBinRanges()
-    prevFreq       = new Uint8Array(analyser.frequencyBinCount).fill(0)
-    frameCount     = 0
-    onsetTimes.length   = 0
-    bpmEstimates.length = 0
-    lastOnsetTime  = -Infinity
+    prevFreq = new Uint8Array(analyser.frequencyBinCount).fill(0)
+    frameCount = 0; statsIdx = 0
+    kickBuf.fill(0); snareBuf.fill(0); hihatBuf.fill(0)
+    onsetTimes.length = 0; bpmEstimates.length = 0
+    lastOnsetTime = -Infinity
     graphIdx = 0
-    graphLog.forEach(g => { g.kick = 0; g.snare = 0; g.flux = 0; g.beat = false })
+    graphLog.forEach(g => { g.kickZ = 0; g.snareZ = 0; g.hihatZ = 0; g.beat = false })
     micActive.value = true
     audioCtx.resume()
     rafId = requestAnimationFrame(processAudio)
@@ -148,9 +175,7 @@ export function useMicSync(songBpm) {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false })
       _initAnalyser()
       audioCtx.createMediaStreamSource(stream).connect(analyser)
-    } catch (err) {
-      console.warn('Mic access failed:', err)
-    }
+    } catch (err) { console.warn('Mic access failed:', err) }
   }
 
   async function startWithFile(file) {
@@ -167,105 +192,70 @@ export function useMicSync(songBpm) {
     if (rafId)    { cancelAnimationFrame(rafId); rafId = null }
     if (stream)   { stream.getTracks().forEach(t => t.stop()); stream = null }
     if (audioCtx) { audioCtx.close(); audioCtx = null }
-    analyser          = null
-    micActive.value   = false
-    detectedBPM.value = null
+    analyser = null; micActive.value = false; detectedBPM.value = null
   }
 
   function drawGraph(canvas) {
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     const W = canvas.width, H = canvas.height
-    const MID = Math.floor(H / 2)
+    const T = Math.floor(H / 3)  // top third: kick z
+    const M = T * 2               // bottom two-thirds split for snare/hihat
 
     ctx.fillStyle = '#111'
     ctx.fillRect(0, 0, W, H)
 
-    // Divider
-    ctx.strokeStyle = 'rgba(255,255,255,0.12)'
+    // Dividers
+    ctx.strokeStyle = 'rgba(255,255,255,0.1)'
     ctx.lineWidth = 1
-    ctx.beginPath(); ctx.moveTo(0, MID); ctx.lineTo(W, MID); ctx.stroke()
+    ;[T, M].forEach(y => { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke() })
 
-    // Beat flashes — bright solid lines
+    // Beat flashes
     for (let i = 0; i < GRAPH_SIZE; i++) {
       if (graphLog[(graphIdx + i) % GRAPH_SIZE].beat) {
         const x = (i / GRAPH_SIZE) * W
-        ctx.fillStyle = 'rgba(255,60,60,0.6)'
+        ctx.fillStyle = 'rgba(255,60,60,0.55)'
         ctx.fillRect(x - 1, 0, 3, H)
-        // Extra bright dot at top
         ctx.fillStyle = '#fff'
         ctx.fillRect(x - 2, 0, 5, 4)
       }
     }
 
-    // Smooth helper: apply simple moving average before drawing
-    const smooth = (getter, windowSize = 5) => {
-      const vals = []
-      for (let i = 0; i < GRAPH_SIZE; i++) vals.push(getter(graphLog[(graphIdx + i) % GRAPH_SIZE]))
-      const smoothed = vals.map((_, i) => {
-        let sum = 0, count = 0
-        for (let j = Math.max(0, i - windowSize); j <= Math.min(GRAPH_SIZE - 1, i + windowSize); j++) {
-          sum += vals[j]; count++
-        }
-        return sum / count
-      })
-      return smoothed
-    }
-
-    const drawSmoothed = (color, values, top, height, maxVal, lineWidth = 2) => {
-      ctx.strokeStyle = color
-      ctx.lineWidth = lineWidth
+    const maxZ = 5
+    const drawZLine = (color, getter, top, height, thresh) => {
+      // Threshold line
+      const ty = top + height - Math.min(1, thresh / maxZ) * height
+      ctx.strokeStyle = 'rgba(255,220,0,0.6)'; ctx.setLineDash([4,4]); ctx.lineWidth = 1
+      ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(W, ty); ctx.stroke()
+      ctx.setLineDash([])
+      // Signal
+      ctx.strokeStyle = color; ctx.lineWidth = 2
       ctx.beginPath()
-      values.forEach((val, i) => {
+      for (let i = 0; i < GRAPH_SIZE; i++) {
+        const val = getter(graphLog[(graphIdx + i) % GRAPH_SIZE])
         const x = (i / GRAPH_SIZE) * W
-        const y = top + height - Math.min(1, val / maxVal) * height
+        const y = top + height - Math.min(1, Math.max(0, val) / maxZ) * height
         i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y)
-      })
+      }
       ctx.stroke()
     }
 
-    // ── Top half: flux (white) + threshold (yellow) ──────────
-    const maxFlux = Math.max(FLUX_THRESHOLD * 4, ...graphLog.map(g => g.flux))
-    const threshY = MID - (FLUX_THRESHOLD / maxFlux) * MID
+    drawZLine('rgba(100,180,255,0.9)', e => e.kickZ,  0, T,   KICK_Z_THRESH)
+    drawZLine('rgba(255,140,0,0.9)',   e => e.snareZ, T, T,   CORR_Z_THRESH)
+    drawZLine('rgba(180,100,255,0.9)', e => e.hihatZ, M, H-M, CORR_Z_THRESH)
 
-    ctx.strokeStyle = 'rgba(255,220,0,0.8)'
-    ctx.setLineDash([6, 4])
-    ctx.lineWidth = 1.5
-    ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(W, threshY); ctx.stroke()
-    ctx.setLineDash([])
-
-    drawSmoothed('rgba(255,255,255,0.95)', graphLog.map((_, i) => graphLog[(graphIdx + i) % GRAPH_SIZE].flux), 0, MID, maxFlux, 2.5)
-
-    // ── Bottom half: kick (cyan) + snare (orange), auto-scaled
-    const maxDrum = Math.max(1, ...graphLog.map(g => Math.max(g.kick, g.snare))) * 1.1
-    drawSmoothed('rgba(0,200,255,0.9)',  smooth(e => e.kick,  3), MID, MID, maxDrum)
-    drawSmoothed('rgba(255,140,0,0.9)',  smooth(e => e.snare, 3), MID, MID, maxDrum)
-
-    // Labels — top half
-    ctx.font = 'bold 10px monospace'
-    ctx.fillStyle = 'rgba(255,255,255,0.8)'; ctx.fillText('FLUX (cross thresh = beat)', 4, 11)
-    ctx.fillStyle = 'rgba(255,220,0,0.9)';   ctx.fillText(`thresh=${FLUX_THRESHOLD}`,   4, 23)
-    // Labels — bottom half
-    ctx.fillStyle = 'rgba(0,200,255,0.9)';   ctx.fillText('kick',  4, MID + 13)
-    ctx.fillStyle = 'rgba(255,140,0,0.9)';   ctx.fillText('snare', 4, MID + 25)
+    ctx.font = 'bold 9px monospace'
+    ctx.fillStyle = 'rgba(100,180,255,0.9)'; ctx.fillText(`kick z>${KICK_Z_THRESH}`,  4, T  - 3)
+    ctx.fillStyle = 'rgba(255,140,0,0.9)';   ctx.fillText(`snare z>${CORR_Z_THRESH}`, 4, M  - 3)
+    ctx.fillStyle = 'rgba(180,100,255,0.9)'; ctx.fillText(`hihat z>${CORR_Z_THRESH}`, 4, H  - 4)
   }
 
   const bpmConfidence = computed(() => {
     const detected = detectedBPM.value
     const ref_ = typeof songBpm?.value !== 'undefined' ? songBpm.value : songBpm
     if (!detected || !ref_) return 0
-    const diff = Math.abs(detected - ref_)
-    return Math.max(0, Math.round(100 - diff * 10))
+    return Math.max(0, Math.round(100 - Math.abs(detected - ref_) * 5))
   })
 
-  return {
-    startMicSync,
-    startWithFile,
-    stopMicSync,
-    micActive,
-    detectedBPM,
-    bpmConfidence,
-    debugEnergy,
-    drawGraph,
-  }
+  return { startMicSync, startWithFile, stopMicSync, micActive, detectedBPM, bpmConfidence, debugEnergy, drawGraph }
 }
