@@ -869,10 +869,10 @@ onUnmounted(() => {
 }
 
 .ctrl-btn {
-  background: rgba(255,255,255,0.12);
-  border: none;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid rgba(255,255,255,0.12);
   border-radius: 8px;
-  color: #fff;
+  color: #ddd;
   font-size: clamp(0.85rem, 3.5vw, 1.1rem);
   padding: 0.45rem 0.65rem;
   min-width: 2.2rem;
@@ -881,6 +881,7 @@ onUnmounted(() => {
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
 }
+.ctrl-btn:active { background: rgba(255,255,255,0.2); color: #fff; }
 .chord-toggle-btn.active { background: var(--chord, #f5c518); color: #000; }
 .sync-toggle-btn {
   min-width: auto;
