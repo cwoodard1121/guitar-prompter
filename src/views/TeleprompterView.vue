@@ -550,8 +550,8 @@ function tick(ts) {
 
 watch(scrolling, (val) => {
   if (syncMode.value) {
-    // In sync mode, scrolling only controls YouTube play/pause — tick runs independently
-    if (!val) { playStartTime.value = null }
+    // In lyric sync mode the clock runs unconditionally — never null playStartTime
+    if (!val && !lyricSyncMode.value) { playStartTime.value = null }
     return
   }
   // Manual scroll mode
@@ -754,6 +754,8 @@ watch(initialSeek, (targetTime) => {
   playStartTime.value = performance.now() - targetTime * 1000
   elapsed.value = targetTime
   scrolling.value = true
+  // Force-restart tick so it picks up the new playStartTime immediately
+  stopSyncTick()
   startSyncTick()
   showFlash('locked')
 })
