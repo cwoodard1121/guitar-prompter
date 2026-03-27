@@ -1,7 +1,7 @@
 import { ref, watch } from 'vue'
 
 const DEFAULTS = {
-  devMode: false,
+  experimentalFeatures: false,
 }
 
 function load() {

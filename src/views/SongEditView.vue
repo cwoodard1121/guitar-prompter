@@ -43,12 +43,12 @@
             <button type="button" class="btn-format" :disabled="!form.content.trim() || checking" @click="formatContent">
               {{ checking ? 'Formatting…' : 'Format' }}
             </button>
-            <button type="button" class="btn-ai" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
-              {{ loadingLyrics ? 'Fetching…' : '✦ AI fill' }}
+            <button v-if="experimentalFeatures" type="button" class="btn-ai" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
+              {{ loadingLyrics ? 'Fetching…' : '✦ AI fill (beta)' }}
             </button>
           </div>
         </div>
-        <span class="hint">Paste from Ultimate Guitar or similar, then tap Format — or use AI fill</span>
+        <span class="hint">Paste from Ultimate Guitar or similar, then tap Format</span>
         <textarea
           v-model="form.content"
           placeholder="Paste tab here, or use AI fill above..."
@@ -132,6 +132,10 @@ import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import ChordChart from '../components/ChordChart.vue'
 import { parseTabText } from '../utils/parseTab.js'
+import { useSettings } from '../composables/useSettings.js'
+
+const { settings } = useSettings()
+const experimentalFeatures = computed(() => settings.value.experimentalFeatures)
 
 const route = useRoute()
 const router = useRouter()

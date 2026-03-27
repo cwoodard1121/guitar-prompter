@@ -715,7 +715,7 @@ function handleKeydown(e) {
 
 // --- Lyric sync (Whisper-based position correction) ---
 const { settings } = useSettings()
-const devMode = computed(() => settings.value.devMode)
+const devMode = computed(() => settings.value.experimentalFeatures)
 const lyricSyncMode = ref(false)
 const seekFlash = ref('')   // '' | 'locked' | 'corrected'
 

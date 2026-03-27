@@ -8,18 +8,18 @@
     <div class="settings-body">
 
       <div class="settings-section">
-        <div class="section-title">Developer Options</div>
+        <div class="section-title">Beta</div>
 
         <div class="setting-row">
           <div class="setting-info">
-            <div class="setting-label">Dev mode</div>
-            <div class="setting-desc">Enables experimental features: lyric position sync (Whisper mic detection), debug overlays, and test file input on the play screen.</div>
+            <div class="setting-label">Experimental features</div>
+            <div class="setting-desc">Enables beta features: AI fill (auto chord chart from web), lyric position sync (Whisper mic), and debug overlays on the play screen.</div>
           </div>
           <button
             class="toggle"
-            :class="{ on: settings.devMode }"
-            @click="settings.devMode = !settings.devMode"
-            :aria-pressed="settings.devMode"
+            :class="{ on: settings.experimentalFeatures }"
+            @click="settings.experimentalFeatures = !settings.experimentalFeatures"
+            :aria-pressed="settings.experimentalFeatures"
           >
             <span class="toggle-thumb"></span>
           </button>
