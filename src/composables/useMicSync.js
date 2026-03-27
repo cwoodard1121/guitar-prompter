@@ -6,7 +6,7 @@ import { ref, computed } from 'vue'
 // regardless of the background level — no rolling average needed.
 
 const MIN_ONSET_INTERVAL = 0.25  // 240 BPM max — filters hi-hats
-const FLUX_THRESHOLD     = 18    // flux spike (0–255 scale) needed to register a beat
+const FLUX_THRESHOLD     = 22    // flux spike (0–255 scale) needed to register a beat
 const ONSET_WINDOW       = 10    // onsets kept for BPM interval calculation
 const BPM_OUTPUT_HISTORY = 8     // median of last N BPM estimates for stable display
 const GRAPH_SIZE         = 300   // frames of scrolling graph history
@@ -40,8 +40,9 @@ export function useMicSync(songBpm) {
 
   function computeBinRanges() {
     const binWidth = audioCtx.sampleRate / analyser.fftSize
-    kickStart  = Math.max(1, Math.round(50 / binWidth))
-    kickEnd    = Math.round(80 / binWidth)
+    // 60–90 Hz: kick fundamental, shifted up slightly for phone mic high-pass
+    kickStart  = Math.max(1, Math.round(60 / binWidth))
+    kickEnd    = Math.round(90 / binWidth)
   }
 
   function processAudio() {
@@ -127,7 +128,7 @@ export function useMicSync(songBpm) {
   function _initAnalyser() {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)()
     analyser = audioCtx.createAnalyser()
-    analyser.fftSize = 1024
+    analyser.fftSize = 2048 // finer freq resolution (~21 Hz/bin vs 43 Hz/bin)
     analyser.smoothingTimeConstant = 0.2
     computeBinRanges()
     prevFreq       = new Uint8Array(analyser.frequencyBinCount).fill(0)
