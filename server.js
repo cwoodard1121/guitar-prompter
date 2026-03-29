@@ -228,6 +228,42 @@ app.post('/api/transcribe', async (req, res) => {
   }
 })
 
+// ── AI chord format/validate endpoint ────────────────────────────────────────
+const VALIDATE_PROMPT = (content) =>
+  `You are a guitar chord formatter. The user has pasted a tab and it has been auto-formatted into bracket chord notation. Review it and fix any issues.
+
+Rules:
+- Chord names must be in [brackets] (e.g. [G], [Cadd9], [D/F#])
+- Fix malformed brackets (e.g. "G]" → "[G]", "[G" → "[G]")
+- Fix obviously wrong chord names (e.g. [Gm7b5] is fine, [XYZ] is not a chord — remove it)
+- Keep all lyrics and content exactly as-is — only fix chord formatting
+- Do NOT add, remove, or reorder any lines
+- Return only the corrected text, no explanations
+
+Content to review:
+${content}`
+
+app.post('/api/chords', async (req, res) => {
+  const apiKey = process.env.OPENAI_API_KEY
+  if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
+
+  const { content } = req.body || {}
+  if (!content) return res.status(400).json({ error: 'content is required' })
+
+  try {
+    const client = new OpenAI({ apiKey })
+    const completion = await client.chat.completions.create({
+      model: 'o4-mini',
+      max_completion_tokens: 4096,
+      reasoning_effort: 'low',
+      messages: [{ role: 'user', content: VALIDATE_PROMPT(content) }]
+    })
+    res.json({ content: completion.choices[0]?.message?.content || '' })
+  } catch (err) {
+    res.status(500).json({ error: err.message })
+  }
+})
+
 // ── AI chord/lyrics endpoint (web search + cache) ────────────────────────────
 app.get('/api/lyrics', async (req, res) => {
   const { title = '', artist = '' } = req.query
