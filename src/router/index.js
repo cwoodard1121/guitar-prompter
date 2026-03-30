@@ -21,17 +21,21 @@ const router = createRouter({
     { path: '/login', component: () => import('../views/LoginView.vue') },
     { path: '/register', component: () => import('../views/LoginView.vue'), props: { mode: 'register' } },
     { path: '/community', component: () => import('../views/CommunityView.vue') },
+    { path: '/admin', component: () => import('../views/AdminView.vue') },
   ]
 })
 
 router.beforeEach((to) => {
-  const { isLoggedIn, loading } = useAuth()
+  const { isLoggedIn, isAdmin, loading } = useAuth()
   // Skip guard during initial load (loading = true)
   if (loading.value) return true
   if (!publicRoutes.includes(to.path) && !isLoggedIn.value) {
     return '/login'
   }
   if (publicRoutes.includes(to.path) && isLoggedIn.value) {
+    return '/'
+  }
+  if (to.path === '/admin' && !isAdmin.value) {
     return '/'
   }
 })

@@ -38,6 +38,10 @@
             <span class="nav-label">Log out</span>
           </button>
         </div>
+        <RouterLink v-if="isAdmin" to="/admin" class="nav-link nav-admin" :class="{ active: route.path === '/admin' }">
+          <ShieldCheck :size="17" />
+          <span class="nav-label">Admin</span>
+        </RouterLink>
         <button class="nav-link nav-help" @click="restartTour" title="Take the tour">
           <HelpCircle :size="17" />
           <span class="nav-label">Tour</span>
@@ -57,13 +61,13 @@
 
 <script setup>
 import { useRoute, RouterLink } from 'vue-router'
-import { Guitar, Home, FilePlus, ListPlus, Settings, HelpCircle, LogOut, Users } from 'lucide-vue-next'
+import { Guitar, Home, FilePlus, ListPlus, Settings, HelpCircle, LogOut, Users, ShieldCheck } from 'lucide-vue-next'
 import { useSettings } from '../composables/useSettings.js'
 import { useAuth } from '../composables/useAuth.js'
 
 const route = useRoute()
 const { settings } = useSettings()
-const { user, logout } = useAuth()
+const { user, logout, isAdmin } = useAuth()
 
 function restartTour() {
   settings.value.tourSeen = false
