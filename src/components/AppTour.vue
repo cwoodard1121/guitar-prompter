@@ -261,7 +261,7 @@ const slides = [
   {
     iconComponent: FilePlus,
     headline: 'Add a Song',
-    body: 'Paste a YouTube URL and we auto-fill the title and artist. Use AI Fill to get chords and lyrics instantly.',
+    body: 'Paste a YouTube URL and we auto-fill the title and artist. Then add your chords and lyrics manually or paste them in.',
     illustrationComponent: IllustrationAddSong,
   },
   {
