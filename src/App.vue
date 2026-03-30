@@ -23,6 +23,7 @@
         <RouterView />
       </AppLayout>
       <RouterView v-else />
+      <AppTour v-if="!settings.tourSeen" @done="settings.tourSeen = true" />
     </template>
   </div>
 </template>
@@ -32,9 +33,12 @@ import { RouterView, useRoute } from 'vue-router'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSongsStore } from './stores/songs.js'
 import AppLayout from './components/AppLayout.vue'
+import AppTour from './components/AppTour.vue'
+import { useSettings } from './composables/useSettings.js'
 
 const store = useSongsStore()
 const route = useRoute()
+const { settings } = useSettings()
 const isPlayRoute = computed(() => route.path.endsWith('/play'))
 
 const serverStatus = ref('checking') // 'checking' | 'waking' | 'online'
