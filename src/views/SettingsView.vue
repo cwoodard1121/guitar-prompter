@@ -24,6 +24,19 @@
       </div>
 
       <div class="settings-section">
+        <div class="section-title">Help</div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">App tour</div>
+            <div class="setting-desc">Walk through the app features again.</div>
+          </div>
+          <button class="btn-retour" @click="settings.tourSeen = false; router.push('/')">
+            Take the tour
+          </button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">About</div>
         <div class="about-row">
           <span class="about-label">Guitar Portal</span>
@@ -41,8 +54,10 @@
 
 <script setup>
 import { useSettings } from '../composables/useSettings.js'
+import { useRouter } from 'vue-router'
 
 const { settings } = useSettings()
+const router = useRouter()
 </script>
 
 <style scoped>
@@ -135,6 +150,25 @@ const { settings } = useSettings()
 }
 .toggle.on .toggle-thumb {
   left: calc(100% - 1.3rem);
+}
+
+/* Tour button */
+.btn-retour {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  border-radius: var(--radius-sm, 8px);
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text, #edeef5);
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+  white-space: nowrap;
+}
+.btn-retour:hover {
+  background: rgba(255,255,255,0.11);
+  border-color: rgba(255,255,255,0.2);
 }
 
 /* About rows */

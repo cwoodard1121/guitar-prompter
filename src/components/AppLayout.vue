@@ -27,6 +27,10 @@
       </div>
 
       <div class="nav-group nav-bottom">
+        <button class="nav-link nav-help" @click="restartTour" title="Take the tour">
+          <HelpCircle :size="17" />
+          <span class="nav-label">Tour</span>
+        </button>
         <RouterLink to="/settings" class="nav-link" :class="{ active: route.path === '/settings' }">
           <Settings :size="17" />
           <span class="nav-label">Settings</span>
@@ -42,9 +46,15 @@
 
 <script setup>
 import { useRoute, RouterLink } from 'vue-router'
-import { Guitar, Home, FilePlus, ListPlus, Settings } from 'lucide-vue-next'
+import { Guitar, Home, FilePlus, ListPlus, Settings, HelpCircle } from 'lucide-vue-next'
+import { useSettings } from '../composables/useSettings.js'
 
 const route = useRoute()
+const { settings } = useSettings()
+
+function restartTour() {
+  settings.value.tourSeen = false
+}
 </script>
 
 <style scoped>
@@ -152,6 +162,14 @@ const route = useRoute()
   margin-top: auto;
   border-top: 1px solid var(--sidebar-border);
   padding-top: 0.75rem;
+}
+
+.nav-help {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
 }
 
 /* Mobile: fixed bottom bar */
