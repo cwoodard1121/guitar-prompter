@@ -108,6 +108,23 @@
           <button v-if="form.bpm" type="button" class="btn-icon" @click="form.bpm = null"><X :size="13" /></button>
           <span class="hint" style="text-transform:none;letter-spacing:0">Used when no sync data</span>
         </div>
+
+        <!-- Share publicly toggle -->
+        <div class="public-row">
+          <div class="public-info">
+            <span class="field-label">Share publicly</span>
+            <span class="hint" style="text-transform:none;letter-spacing:0">Makes this song visible in the Community section</span>
+          </div>
+          <button
+            type="button"
+            class="toggle"
+            :class="{ on: form.isPublic }"
+            @click="form.isPublic = !form.isPublic"
+            :aria-pressed="form.isPublic"
+          >
+            <span class="toggle-thumb"></span>
+          </button>
+        </div>
       </div>
 
       <!-- ── Preview ── -->
@@ -140,7 +157,7 @@ const store = useSongsStore()
 
 const isNew = computed(() => route.params.id === undefined)
 
-const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null, bpm: null, syncOffset: 0 })
+const form = ref({ title: '', artist: '', content: '', syncedLyrics: null, youtubeId: null, bpm: null, syncOffset: 0, isPublic: false })
 const checking = ref(false)
 const checkError = ref('')
 const loadingLyrics = ref(false)
@@ -305,7 +322,7 @@ onMounted(() => {
   if (!isNew.value) {
     const song = store.getSong(route.params.id)
     if (song) {
-      form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null, bpm: song.bpm ?? null, syncOffset: song.syncOffset ?? 0 }
+      form.value = { title: song.title, artist: song.artist, content: song.content, syncedLyrics: song.syncedLyrics ?? null, youtubeId: song.youtubeId ?? null, bpm: song.bpm ?? null, syncOffset: song.syncOffset ?? 0, isPublic: song.isPublic ?? false }
       if (song.youtubeId) {
         suppressNextParse = true
         youtubeUrlInput.value = `https://www.youtube.com/watch?v=${song.youtubeId}`
@@ -649,5 +666,53 @@ textarea {
 .check-error {
   font-size: 0.78rem;
   color: var(--accent);
+}
+
+/* Share publicly row */
+.public-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.public-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+/* Toggle */
+.toggle {
+  width: 2.6rem;
+  height: 1.4rem;
+  background: rgba(255,255,255,0.1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 99px;
+  cursor: pointer;
+  position: relative;
+  flex-shrink: 0;
+  transition: background 0.2s, border-color 0.2s;
+  padding: 0;
+}
+.toggle.on {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.toggle-thumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 1rem;
+  height: 1rem;
+  background: #fff;
+  border-radius: 50%;
+  transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.toggle.on .toggle-thumb {
+  transform: translateX(1.2rem);
 }
 </style>
