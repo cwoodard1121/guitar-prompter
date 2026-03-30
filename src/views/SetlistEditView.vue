@@ -1,9 +1,6 @@
 <template>
   <div class="edit-view">
-    <header class="edit-header">
-      <button class="btn-back" @click="router.back()">← Back</button>
-      <h2>{{ isNew ? 'New Setlist' : 'Edit Setlist' }}</h2>
-    </header>
+    <h1 class="page-title">{{ isNew ? 'New Setlist' : 'Edit Setlist' }}</h1>
 
     <div class="edit-form">
       <label>
@@ -22,9 +19,9 @@
             <span class="song-artist">{{ song.artist }}</span>
           </div>
           <div class="row-actions">
-            <button class="btn-icon" :disabled="idx === 0" @click="moveUp(idx)">↑</button>
-            <button class="btn-icon" :disabled="idx === setlistSongs.length - 1" @click="moveDown(idx)">↓</button>
-            <button class="btn-icon btn-remove" @click="removeSong(idx)">✕</button>
+            <button class="btn-icon" :disabled="idx === 0" @click="moveUp(idx)"><ChevronUp :size="14" /></button>
+            <button class="btn-icon" :disabled="idx === setlistSongs.length - 1" @click="moveDown(idx)"><ChevronDown :size="14" /></button>
+            <button class="btn-icon btn-remove" @click="removeSong(idx)"><X :size="14" /></button>
           </div>
         </li>
       </ul>
@@ -37,14 +34,14 @@
             <span class="song-title">{{ song.title }}</span>
             <span class="song-artist">{{ song.artist }}</span>
           </div>
-          <span class="btn-add-song">+</span>
+          <span class="btn-add-song"><Plus :size="14" /></span>
         </li>
         <li v-if="availableSongs.length === 0" class="empty-msg">All songs added</li>
       </ul>
 
       <div class="form-actions">
         <button class="btn-save" :disabled="!name.trim()" @click="save">Save Setlist</button>
-        <RouterLink v-if="!isNew && songIds.length > 0" :to="`/song/${songIds[0]}/play?setlist=${route.params.id}&idx=0`" class="btn-play">▶ Play</RouterLink>
+        <RouterLink v-if="!isNew && songIds.length > 0" :to="`/song/${songIds[0]}/play?setlist=${route.params.id}&idx=0`" class="btn-play"><Play :size="15" /> Play</RouterLink>
       </div>
 
       <button v-if="!isNew" class="btn-delete" @click="deleteSetlist">Delete setlist</button>
@@ -57,6 +54,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import { useSetlistsStore } from '../stores/setlists.js'
+import { ChevronUp, ChevronDown, X, Plus, Play } from 'lucide-vue-next'
 
 const route = useRoute()
 const router = useRouter()
@@ -133,31 +131,8 @@ async function deleteSetlist() {
 .edit-view {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  padding: 1rem;
   gap: 1.1rem;
 }
-.edit-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border-subtle);
-}
-.btn-back {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  padding: 0.4rem 0;
-  font-weight: 500;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  transition: color 0.15s;
-}
-.btn-back:active { color: var(--text); }
-.edit-header h2 { font-size: 1.1rem; font-weight: 600; }
 
 .edit-form {
   display: flex;
@@ -264,7 +239,9 @@ input:focus {
   font-size: 0.88rem;
   padding: 0.4rem 0.6rem;
   min-width: 2rem;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   transition: background 0.15s, color 0.15s;
 }
 .btn-icon:disabled { opacity: 0.2; }
@@ -276,14 +253,15 @@ input:focus {
 }
 
 .btn-add-song {
-  font-size: 0.88rem;
-  font-weight: 700;
   background: rgba(232,54,93,0.1);
   color: var(--accent);
   border-radius: var(--radius-sm);
-  padding: 0.3rem 0.7rem;
+  padding: 0.3rem 0.6rem;
   flex-shrink: 0;
   border: 1px solid rgba(232,54,93,0.2);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .form-actions {

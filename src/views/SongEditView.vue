@@ -1,9 +1,6 @@
 <template>
   <div class="edit-view">
-    <header class="edit-header">
-      <button class="btn-back" @click="router.back()">← Back</button>
-      <h2>{{ isNew ? 'New Song' : 'Edit Song' }}</h2>
-    </header>
+    <h1 class="page-title">{{ isNew ? 'New Song' : 'Edit Song' }}</h1>
 
     <form class="edit-form" @submit.prevent="save">
 
@@ -13,7 +10,7 @@
         <div class="yt-input-row">
           <input v-model="youtubeUrlInput" type="text" placeholder="https://youtube.com/watch?v=..." />
           <span v-if="form.youtubeId && !parseStatus" class="badge badge-ok">✓</span>
-          <button v-if="form.youtubeId" type="button" class="btn-icon" @click="youtubeUrlInput = ''; form.youtubeId = null">✕</button>
+          <button v-if="form.youtubeId" type="button" class="btn-icon" @click="youtubeUrlInput = ''; form.youtubeId = null"><X :size="13" /></button>
         </div>
         <div v-if="parseStatus === 'loading'" class="status-row">
           <span class="status-muted">Identifying song…</span>
@@ -43,8 +40,8 @@
             <button type="button" class="btn-format" :disabled="!form.content.trim() || checking" @click="formatContent">
               {{ checking ? 'Formatting…' : 'Format' }}
             </button>
-            <button v-if="experimentalFeatures" type="button" class="btn-ai" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
-              {{ loadingLyrics ? 'Fetching…' : '✦ AI fill (beta)' }}
+            <button v-if="settings.experimentalFeatures" type="button" class="btn-ai" :disabled="loadingLyrics || !form.title" @click="suggestWithLyrics">
+              <Sparkles v-if="!loadingLyrics" :size="13" /> {{ loadingLyrics ? 'Fetching…' : 'AI fill' }}
             </button>
           </div>
         </div>
@@ -73,12 +70,12 @@
             class="btn-lrc"
             :disabled="lrcStatus === 'loading' || !form.title || !form.artist"
             @click="fetchLrcSync"
-          >{{ lrcStatus === 'loading' ? 'Fetching…' : '⏱ Fetch Sync' }}</button>
+          ><Clock v-if="lrcStatus !== 'loading'" :size="13" /> {{ lrcStatus === 'loading' ? 'Fetching…' : 'Fetch Sync' }}</button>
           <span v-if="lrcStatus === 'found'" class="badge badge-ok">✓ Synced</span>
           <span v-else-if="lrcStatus === 'not_found'" class="status-warn">No sync available</span>
           <span v-else-if="lrcStatus === 'error'" class="status-err">Fetch failed</span>
           <span v-else-if="form.syncedLyrics" class="badge badge-ok">✓ Sync stored</span>
-          <button v-if="form.syncedLyrics" type="button" class="btn-icon" @click="form.syncedLyrics = null; lrcStatus = 'idle'">✕</button>
+          <button v-if="form.syncedLyrics" type="button" class="btn-icon" @click="form.syncedLyrics = null; lrcStatus = 'idle'"><X :size="13" /></button>
         </div>
         <div v-if="lrcMeta" class="lrc-meta">
           {{ lrcMeta.albumName ? `"${lrcMeta.albumName}"` : '' }}
@@ -92,7 +89,7 @@
           <button type="button" class="btn-tap" @click="adjustSyncOffset(-0.5)">−½s</button>
           <span class="bpm-input offset-display">{{ syncOffsetDisplay }}</span>
           <button type="button" class="btn-tap" @click="adjustSyncOffset(0.5)">+½s</button>
-          <button v-if="form.syncOffset !== 0" type="button" class="btn-icon" @click="resetSyncOffset">✕</button>
+          <button v-if="form.syncOffset !== 0" type="button" class="btn-icon" @click="resetSyncOffset"><X :size="13" /></button>
           <span class="hint" style="text-transform:none;letter-spacing:0">Saved for this song</span>
         </div>
 
@@ -108,7 +105,7 @@
             max="300"
             placeholder="—"
           />
-          <button v-if="form.bpm" type="button" class="btn-icon" @click="form.bpm = null">✕</button>
+          <button v-if="form.bpm" type="button" class="btn-icon" @click="form.bpm = null"><X :size="13" /></button>
           <span class="hint" style="text-transform:none;letter-spacing:0">Used when no sync data</span>
         </div>
       </div>
@@ -119,7 +116,7 @@
       <!-- ── Actions ── -->
       <div class="form-actions">
         <button type="submit" class="btn-save">Save</button>
-        <RouterLink v-if="!isNew" :to="`/song/${route.params.id}/play`" class="btn-play">▶ Play</RouterLink>
+        <RouterLink v-if="!isNew" :to="`/song/${route.params.id}/play`" class="btn-play"><Play :size="15" /> Play</RouterLink>
       </div>
 
     </form>
@@ -133,9 +130,9 @@ import { useSongsStore } from '../stores/songs.js'
 import ChordChart from '../components/ChordChart.vue'
 import { parseTabText } from '../utils/parseTab.js'
 import { useSettings } from '../composables/useSettings.js'
+import { X, Sparkles, Clock, Play } from 'lucide-vue-next'
 
 const { settings } = useSettings()
-const experimentalFeatures = computed(() => settings.value.experimentalFeatures)
 
 const route = useRoute()
 const router = useRouter()
@@ -377,34 +374,8 @@ async function suggestWithLyrics() {
 .edit-view {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  padding: 1rem;
   gap: 1.1rem;
 }
-
-.edit-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.btn-back {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  padding: 0.4rem 0;
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  font-weight: 500;
-  transition: color 0.15s;
-}
-.btn-back:active { color: var(--text); }
-
-.edit-header h2 { font-size: 1.1rem; font-weight: 600; }
 
 .edit-form {
   display: flex;
@@ -468,7 +439,7 @@ input:focus, textarea:focus {
 textarea {
   resize: vertical;
   line-height: 1.6;
-  font-family: 'Courier New', monospace;
+  font-family: var(--font-mono);
   font-size: 0.95rem;
 }
 

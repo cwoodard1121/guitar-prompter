@@ -18,16 +18,24 @@
       </div>
     </div>
 
-    <RouterView v-if="serverStatus === 'online'" />
+    <template v-if="serverStatus === 'online'">
+      <AppLayout v-if="!isPlayRoute">
+        <RouterView />
+      </AppLayout>
+      <RouterView v-else />
+    </template>
   </div>
 </template>
 
 <script setup>
-import { RouterView } from 'vue-router'
-import { ref, onMounted, onUnmounted } from 'vue'
+import { RouterView, useRoute } from 'vue-router'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSongsStore } from './stores/songs.js'
+import AppLayout from './components/AppLayout.vue'
 
 const store = useSongsStore()
+const route = useRoute()
+const isPlayRoute = computed(() => route.path.endsWith('/play'))
 
 const serverStatus = ref('checking') // 'checking' | 'waking' | 'online'
 const elapsed = ref(0)

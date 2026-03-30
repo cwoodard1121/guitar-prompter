@@ -1,9 +1,6 @@
 <template>
   <div class="settings-view">
-    <header class="settings-header">
-      <button class="btn-back" @click="router.back()">← Back</button>
-      <h2>Settings</h2>
-    </header>
+    <h1 class="page-title">Settings</h1>
 
     <div class="settings-body">
 
@@ -43,10 +40,8 @@
 </template>
 
 <script setup>
-import { useRouter } from 'vue-router'
 import { useSettings } from '../composables/useSettings.js'
 
-const router = useRouter()
 const { settings } = useSettings()
 </script>
 
@@ -54,31 +49,8 @@ const { settings } = useSettings()
 .settings-view {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  padding: 1rem;
   gap: 1.5rem;
 }
-
-.settings-header {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.btn-back {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 0.95rem;
-  padding: 0.4rem 0;
-  font-weight: 500;
-  transition: color 0.15s;
-}
-.btn-back:active { color: var(--text); }
-
-.settings-header h2 { font-size: 1.1rem; font-weight: 600; }
 
 .settings-body {
   display: flex;

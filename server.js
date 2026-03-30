@@ -9,6 +9,7 @@ import { createClient } from '@supabase/supabase-js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3000
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 
 const PASSWORD = process.env.SITE_PASSWORD || null
 
@@ -41,6 +42,13 @@ function songToRow(song) {
     bpm: song.bpm ?? null,
     sync_offset: song.syncOffset ?? 0
   }
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function parseCookies(cookieHeader) {
+  return Object.fromEntries(
+    cookieHeader.split(';').map(c => c.trim().split('=').map(decodeURIComponent))
+  )
 }
 
 // ── Password protection ─────────────────────────────────────────────────────
@@ -194,11 +202,9 @@ app.delete('/api/setlists', async (req, res) => {
 app.get('/api/parse-title', async (req, res) => {
   const { raw } = req.query
   if (!raw) return res.status(400).json({ error: 'raw is required' })
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'no key' })
+  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'no key' })
   try {
-    const client = new OpenAI({ apiKey })
-    const completion = await client.chat.completions.create({
+    const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       max_tokens: 60,
       messages: [{ role: 'user', content: `Extract artist and song title from this YouTube video title. Return only JSON: {"artist":"...","title":"..."}\n\n"${raw}"` }]
@@ -210,8 +216,7 @@ app.get('/api/parse-title', async (req, res) => {
 
 // ── Whisper transcription endpoint ──────────────────────────────────────────
 app.post('/api/transcribe', async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'no key' })
+  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'no key' })
 
   const { audio, mimeType } = req.body
   if (!audio) return res.status(400).json({ error: 'audio is required' })
@@ -220,8 +225,7 @@ app.post('/api/transcribe', async (req, res) => {
     const buffer = Buffer.from(audio, 'base64')
     const ext    = mimeType?.includes('mp4') ? 'mp4' : 'webm'
     const file   = await toFile(buffer, `chunk.${ext}`, { type: mimeType || 'audio/webm' })
-    const client = new OpenAI({ apiKey })
-    const result = await client.audio.transcriptions.create({ model: 'whisper-1', file })
+    const result = await openai.audio.transcriptions.create({ model: 'whisper-1', file })
     res.json({ text: result.text || '' })
   } catch (err) {
     res.status(500).json({ error: err.message })
@@ -244,15 +248,13 @@ Content to review:
 ${content}`
 
 app.post('/api/chords', async (req, res) => {
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
+  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
 
   const { content } = req.body || {}
   if (!content) return res.status(400).json({ error: 'content is required' })
 
   try {
-    const client = new OpenAI({ apiKey })
-    const completion = await client.chat.completions.create({
+    const completion = await openai.chat.completions.create({
       model: 'o4-mini',
       max_completion_tokens: 4096,
       reasoning_effort: 'low',
@@ -268,9 +270,7 @@ app.post('/api/chords', async (req, res) => {
 app.get('/api/lyrics', async (req, res) => {
   const { title = '', artist = '' } = req.query
   if (!title) return res.status(400).json({ error: 'title is required' })
-
-  const apiKey = process.env.OPENAI_API_KEY
-  if (!apiKey) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
+  if (!process.env.OPENAI_API_KEY) return res.status(500).json({ error: 'OPENAI_API_KEY not configured' })
 
   const titleKey  = title.trim().toLowerCase()
   const artistKey = artist.trim().toLowerCase()
@@ -287,8 +287,7 @@ app.get('/api/lyrics', async (req, res) => {
 
   // Cache miss — call OpenAI web search
   try {
-    const client = new OpenAI({ apiKey })
-    const response = await client.responses.create({
+    const response = await openai.responses.create({
       model: 'gpt-4o-mini',
       tools: [{ type: 'web_search_preview', search_context_size: 'low' }],
       input: `Search for the guitar tab for "${title}"${artist ? ` by ${artist}` : ''} on Ultimate Guitar or a similar tab site and return the chord chart.
@@ -305,14 +304,14 @@ Include verse 1 and the chorus. Output ONLY the chord chart text — no markdown
 
     const content = response.output_text || ''
 
-    // Store in cache (ignore errors — don't fail the request over a cache write)
+    // Store in cache — fire-and-forget, don't fail the request on cache write errors
     supabase.from('chord_cache').insert({
       title: title.trim(),
       artist: artist.trim(),
       title_key: titleKey,
       artist_key: artistKey,
       content,
-    }).then().catch(() => {})
+    }).catch(() => {})
 
     res.json({ content })
   } catch (err) {
@@ -327,10 +326,3 @@ app.get('/{*path}', (_req, res) => res.sendFile(path.join(distDir, 'index.html')
 
 // ── Start ────────────────────────────────────────────────────────────────────
 app.listen(PORT, () => console.log(`Guitar Portal running on :${PORT}`))
-
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function parseCookies(cookieHeader) {
-  return Object.fromEntries(
-    cookieHeader.split(';').map(c => c.trim().split('=').map(decodeURIComponent))
-  )
-}

@@ -1,17 +1,5 @@
 <template>
   <div class="home">
-    <header class="home-header">
-      <div class="wordmark">
-        <span class="wordmark-icon">🎸</span>
-        <span class="wordmark-text">Guitar Portal</span>
-      </div>
-      <div class="header-actions">
-        <RouterLink to="/setlist/new" class="btn-add btn-setlist">+ Setlist</RouterLink>
-        <RouterLink to="/song/new" class="btn-add">+ Song</RouterLink>
-        <RouterLink to="/settings" class="btn-settings" aria-label="Settings">⚙</RouterLink>
-      </div>
-    </header>
-
     <!-- Setlists -->
     <div v-if="setlistsStore.setlists.length > 0" class="section">
       <div class="section-title">Setlists</div>
@@ -26,8 +14,8 @@
               v-if="setlist.songIds?.length"
               :to="`/song/${setlist.songIds[0]}/play?setlist=${setlist.id}&idx=0`"
               class="btn btn-play"
-            >▶ Play</RouterLink>
-            <RouterLink :to="`/setlist/${setlist.id}/edit`" class="btn btn-edit">✏️</RouterLink>
+            ><Play :size="13" /> Play</RouterLink>
+            <RouterLink :to="`/setlist/${setlist.id}/edit`" class="btn btn-edit"><Pencil :size="13" /></RouterLink>
           </div>
         </li>
       </ul>
@@ -39,7 +27,7 @@
       <input v-if="store.songs.length > 4" v-model="q" class="search-input" type="search" placeholder="Search songs..." />
 
       <div v-if="store.songs.length === 0" class="empty">
-        <p>No songs yet. Tap <strong>+ Song</strong> to get started.</p>
+        <p>No songs yet. Use <strong>New Song</strong> to get started.</p>
       </div>
 
       <ul v-else class="song-list">
@@ -56,9 +44,9 @@
             <span class="song-artist">{{ song.artist }}</span>
           </div>
           <div class="song-actions">
-            <RouterLink :to="`/song/${song.id}/play`" class="btn btn-play">▶</RouterLink>
-            <RouterLink :to="`/song/${song.id}/edit`" class="btn btn-edit">✏️</RouterLink>
-            <button class="btn btn-delete" @click="confirmDelete(song)">🗑️</button>
+            <RouterLink :to="`/song/${song.id}/play`" class="btn btn-play"><Play :size="13" /></RouterLink>
+            <RouterLink :to="`/song/${song.id}/edit`" class="btn btn-edit"><Pencil :size="13" /></RouterLink>
+            <button class="btn btn-delete" @click="confirmDelete(song)"><Trash2 :size="13" /></button>
           </div>
         </li>
       </ul>
@@ -66,9 +54,9 @@
 
     <!-- Export / Import -->
     <div class="io-row">
-      <button class="btn-io" @click="exportSongs">⬇ Export songs</button>
+      <button class="btn-io" @click="exportSongs"><Download :size="15" /> Export songs</button>
       <label class="btn-io">
-        ⬆ Import songs
+        <Upload :size="15" /> Import songs
         <input type="file" accept=".json" style="display:none" @change="importSongs" />
       </label>
     </div>
@@ -80,6 +68,7 @@ import { ref, computed, onMounted } from 'vue'
 import { RouterLink } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import { useSetlistsStore } from '../stores/setlists.js'
+import { Play, Pencil, Trash2, Download, Upload } from 'lucide-vue-next'
 
 const store = useSongsStore()
 const setlistsStore = useSetlistsStore()
@@ -137,78 +126,8 @@ async function importSongs(e) {
 .home {
   display: flex;
   flex-direction: column;
-  min-height: 100dvh;
-  padding: 1rem;
   gap: 1.5rem;
 }
-
-.home-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 0.5rem 0 0.9rem;
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.wordmark {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-.wordmark-icon {
-  font-size: 1rem;
-  background: linear-gradient(135deg, var(--accent), #c0254a);
-  border-radius: 9px;
-  width: 2.1rem;
-  height: 2.1rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  box-shadow: 0 2px 8px var(--accent-glow);
-}
-.wordmark-text {
-  font-size: 1.1rem;
-  font-weight: 700;
-  letter-spacing: -0.02em;
-  color: var(--text);
-}
-
-.header-actions { display: flex; gap: 0.5rem; align-items: center; }
-
-.btn-settings {
-  background: none;
-  border: none;
-  color: var(--text-muted);
-  font-size: 1.1rem;
-  padding: 0.3rem 0.4rem;
-  border-radius: var(--radius);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s;
-}
-.btn-settings:active { color: var(--text); }
-
-.btn-add {
-  background: var(--accent);
-  color: #fff;
-  padding: 0.55rem 1.05rem;
-  border-radius: var(--radius);
-  font-weight: 600;
-  font-size: 0.88rem;
-  border: none;
-  box-shadow: 0 2px 8px var(--accent-glow);
-  letter-spacing: 0.01em;
-}
-.btn-add:active { opacity: 0.85; transform: scale(0.96); }
-.btn-setlist {
-  background: rgba(124,111,255,0.14);
-  color: var(--accent2-bright);
-  border: 1px solid rgba(124,111,255,0.25);
-  box-shadow: none;
-}
-.btn-setlist:active { opacity: 0.8; transform: scale(0.96); }
 
 .section { display: flex; flex-direction: column; gap: 0.65rem; }
 
@@ -285,6 +204,9 @@ async function importSongs(e) {
   transition: border-color 0.2s;
 }
 .song-card:active { transform: scale(0.99); opacity: 0.9; }
+@media (hover: hover) {
+  .song-card:hover { border-color: var(--border-mid); background: var(--bg-card-hover); }
+}
 .song-thumb {
   width: 64px;
   height: 36px;

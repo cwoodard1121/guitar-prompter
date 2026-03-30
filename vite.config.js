@@ -31,6 +31,15 @@ Rules:
 Content to review:
 ${content}`
 
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let body = ''
+    req.on('data', chunk => { body += chunk })
+    req.on('end', () => { try { resolve(JSON.parse(body)) } catch { reject(new Error('Invalid JSON')) } })
+    req.on('error', reject)
+  })
+}
+
 const SONGS_FILE = path.resolve(process.cwd(), 'songs.json')
 
 function readSongs() {
@@ -70,13 +79,6 @@ function songsMiddlewarePlugin() {
           res.setHeader('Content-Type', 'application/json')
           res.end(JSON.stringify(data))
         }
-
-        const readBody = () => new Promise((resolve, reject) => {
-          let body = ''
-          req.on('data', chunk => { body += chunk })
-          req.on('end', () => { try { resolve(JSON.parse(body)) } catch { reject(new Error('Invalid JSON')) } })
-          req.on('error', reject)
-        })
 
         if (req.method === 'GET') {
           return send(200, readSongs())
@@ -131,15 +133,8 @@ function apiMiddlewarePlugin(env) {
         const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
 
-        let body = ''
-        await new Promise((resolve, reject) => {
-          req.on('data', chunk => { body += chunk })
-          req.on('end', resolve)
-          req.on('error', reject)
-        })
-
         let parsed
-        try { parsed = JSON.parse(body) } catch { return send(400, { error: 'Invalid JSON' }) }
+        try { parsed = await readBody(req) } catch { return send(400, { error: 'Invalid JSON' }) }
         const { audio, mimeType } = parsed || {}
         if (!audio) return send(400, { error: 'audio is required' })
 
@@ -204,25 +199,15 @@ function apiMiddlewarePlugin(env) {
           res.end(JSON.stringify(data))
         }
 
+        if (req.method !== 'POST') return send(405, { error: 'method not allowed' })
+
         const apiKey = env.OPENAI_API_KEY
         if (!apiKey) return send(500, { error: 'OPENAI_API_KEY not configured' })
 
-        let prompt
-        if (req.method === 'POST') {
-          let body = ''
-          await new Promise((resolve, reject) => {
-            req.on('data', chunk => { body += chunk })
-            req.on('end', resolve)
-            req.on('error', reject)
-          })
-          let parsed
-          try { parsed = JSON.parse(body) } catch { return send(400, { error: 'Invalid JSON' }) }
-          const { content } = parsed || {}
-          if (!content) return send(400, { error: 'content is required' })
-          prompt = VALIDATE_PROMPT(content)
-        } else {
-          return send(405, { error: 'method not allowed' })
-        }
+        let parsed
+        try { parsed = await readBody(req) } catch { return send(400, { error: 'Invalid JSON' }) }
+        const { content } = parsed || {}
+        if (!content) return send(400, { error: 'content is required' })
 
         try {
           const client = new OpenAI({ apiKey })
@@ -230,7 +215,7 @@ function apiMiddlewarePlugin(env) {
             model: 'o4-mini',
             max_completion_tokens: 4096,
             reasoning_effort: 'low',
-            messages: [{ role: 'user', content: prompt }]
+            messages: [{ role: 'user', content: VALIDATE_PROMPT(content) }]
           })
           return send(200, { content: completion.choices[0]?.message?.content || '' })
         } catch (err) {

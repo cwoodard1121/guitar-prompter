@@ -14,6 +14,7 @@
     "@supabase/supabase-js": "^2.100.0",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
+    "lucide-vue-next": "^1.0.0",
     "openai": "^6.32.0",
     "pinia": "^2.1.7",
     "svguitar": "^2.5.1",

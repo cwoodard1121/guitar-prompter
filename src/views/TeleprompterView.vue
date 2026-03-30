@@ -59,7 +59,7 @@
       <!-- YouTube embed (inline, between header and lyrics) -->
       <div v-if="hasYoutube && syncEnabled" class="yt-overlay" :class="{ 'yt-hidden': !showYT }">
         <button class="yt-toggle-btn" @click="showYT = !showYT">
-          {{ showYT ? '▾ YT' : '▸ YT' }}
+          <ChevronDown v-if="showYT" :size="13" /><ChevronRight v-else :size="13" /> YT
         </button>
         <div ref="ytPlayerEl" class="yt-player-el"></div>
       </div>
@@ -108,7 +108,7 @@
 
     <!-- Controls overlay (top) -->
     <div class="tp-controls">
-      <button class="ctrl-btn" @click="goHome">✕</button>
+      <button class="ctrl-btn" @click="goHome"><X :size="15" /></button>
       <div class="ctrl-group">
         <button class="ctrl-btn" @click="fontSize = Math.max(14, fontSize - 2)">A−</button>
         <button class="ctrl-btn" @click="fontSize = Math.min(60, fontSize + 2)">A+</button>
@@ -119,25 +119,25 @@
         <button class="ctrl-btn" @click="transposeSteps++">♯</button>
       </div>
       <div v-if="!syncMode" class="ctrl-group">
-        <button class="ctrl-btn" @click="speed = Math.max(5, speed - 5)">🐢</button>
+        <button class="ctrl-btn" @click="speed = Math.max(5, speed - 5)"><Minus :size="13" /></button>
         <button class="ctrl-btn speed-val">{{ speed }}</button>
-        <button class="ctrl-btn" @click="speed = Math.min(200, speed + 5)">🐇</button>
+        <button class="ctrl-btn" @click="speed = Math.min(200, speed + 5)"><Plus :size="13" /></button>
       </div>
       <button class="ctrl-btn chord-toggle-btn" :class="{ active: showChordDiagrams }" @click="showChordDiagrams = !showChordDiagrams">
-        🎸
+        <Guitar :size="15" />
       </button>
       <button v-if="hasSync || hasBpm" class="ctrl-btn sync-toggle-btn" :class="{ active: syncEnabled }" @click="toggleSync">
-        ⏱ Sync
+        <Clock :size="15" />
       </button>
       <template v-if="syncMode">
         <button class="ctrl-btn nudge-btn" @click="nudgeOffset(-0.5)" title="Lyrics ahead — shift back">−½s</button>
         <button class="ctrl-btn nudge-btn" @click="nudgeOffset(0.5)" title="Lyrics behind — shift forward">+½s</button>
       </template>
       <button v-if="!syncMode" class="ctrl-btn catchup-btn" @click="catchUp">
-        ⏩
+        <ChevronsRight :size="15" />
       </button>
       <button v-if="hasSync && devMode" class="ctrl-btn lyric-sync-btn" :class="{ active: lyricSyncMode }" @click="toggleLyricSync" title="Lyric position sync (Whisper)">
-        🎙
+        <Mic :size="15" />
       </button>
     </div>
 
@@ -193,13 +193,13 @@
     <!-- Floating play bar (bottom) -->
     <div class="tp-play-bar">
       <template v-if="setlistId">
-        <button class="play-bar-nav" :disabled="!hasPrevSong" @click="goPrevSong">‹</button>
+        <button class="play-bar-nav" :disabled="!hasPrevSong" @click="goPrevSong"><ChevronLeft :size="20" /></button>
       </template>
       <button class="play-bar-btn" @click="toggleScroll">
-        {{ scrolling ? '⏸' : '▶' }}
+        <Pause v-if="scrolling" :size="20" /><Play v-else :size="20" />
       </button>
       <template v-if="setlistId">
-        <button class="play-bar-nav" :disabled="!hasNextSong" @click="goNextSong">›</button>
+        <button class="play-bar-nav" :disabled="!hasNextSong" @click="goNextSong"><ChevronRight :size="20" /></button>
       </template>
     </div>
   </div>
@@ -211,6 +211,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { useSongsStore } from '../stores/songs.js'
 import { useSetlistsStore } from '../stores/setlists.js'
 import ChordDiagram from '../components/ChordDiagram.vue'
+import { X, Minus, Plus, Guitar, Clock, ChevronsRight, Mic, ChevronDown, ChevronRight, ChevronLeft, Play, Pause } from 'lucide-vue-next'
 import { extractChordNames, getChord, transposeChord, transposeContent } from '../data/chords.js'
 import { parseLrc, matchLrcToLines } from '../utils/parseLrc.js'
 import { useLyricSync } from '../composables/useLyricSync.js'
@@ -404,6 +405,7 @@ const lineTimings = computed(() =>
 )
 const hasSync = computed(() => lineTimings.value.some(t => t !== null))
 const hasBpm = computed(() => !hasSync.value && !!song.value?.bpm)
+const lyricSyncMode = ref(false)
 const syncMode = computed(() =>
   ((hasSync.value || hasBpm.value) && syncEnabled.value) || lyricSyncMode.value
 )
@@ -716,7 +718,6 @@ function handleKeydown(e) {
 // --- Lyric sync (Whisper-based position correction) ---
 const { settings } = useSettings()
 const devMode = computed(() => settings.value.experimentalFeatures)
-const lyricSyncMode = ref(false)
 const seekFlash = ref('')   // '' | 'locked' | 'corrected'
 
 const {
@@ -998,7 +999,9 @@ onUnmounted(() => {
   font-size: clamp(0.85rem, 3.5vw, 1.1rem);
   padding: 0.45rem 0.65rem;
   min-width: 2.2rem;
-  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   -webkit-tap-highlight-color: transparent;
   touch-action: manipulation;
@@ -1134,7 +1137,9 @@ onUnmounted(() => {
   margin: 0.25rem 0 0.5rem;
 }
 .yt-toggle-btn {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
   width: 100%;
   background: rgba(255,255,255,0.08);
   border: none;

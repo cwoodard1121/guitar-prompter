@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -23,13 +25,28 @@
   --shadow-sm: 0 1px 4px rgba(0,0,0,0.4);
   --shadow-md: 0 4px 20px rgba(0,0,0,0.45);
   --font-base: 18px;
+  --font-sans: 'Inter', 'Segoe UI', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'Courier New', monospace;
+
+  /* Sidebar */
+  --sidebar-width: 220px;
+  --sidebar-bg: #0b0b18;
+  --sidebar-border: rgba(255,255,255,0.06);
+  --nav-hover: rgba(255,255,255,0.05);
+  --nav-active-bg: rgba(232,54,93,0.12);
+  --nav-active-border: var(--accent);
+
+  /* Extra surface */
+  --bg-card-hover: #1c1c32;
+  --radius-xs: 6px;
+  --radius-lg: 16px;
 }
 
 html, body {
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  font-family: 'Segoe UI', system-ui, sans-serif;
+  font-family: var(--font-sans);
   font-size: var(--font-base);
   -webkit-tap-highlight-color: transparent;
   overscroll-behavior: none;
@@ -54,4 +71,34 @@ button {
 
 input, textarea {
   font-family: inherit;
+}
+
+/* ── App shell layout ─────────────────────────────── */
+.app-shell {
+  display: flex;
+  min-height: 100dvh;
+}
+
+.app-content {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 1.5rem;
+}
+
+/* Shared page title used by all non-home views */
+.page-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 0.25rem;
+}
+
+/* Mobile: sidebar becomes fixed bottom nav */
+@media (max-width: 640px) {
+  .app-content {
+    padding-bottom: calc(60px + 1.5rem);
+  }
 }
