@@ -12,6 +12,24 @@
         </div>
         <div class="setting-row">
           <div class="setting-info">
+            <div class="setting-label">Display name</div>
+            <div class="setting-desc">Shown on community songs you share publicly.</div>
+          </div>
+          <div class="display-name-field">
+            <input
+              v-model="displayNameInput"
+              class="dn-input"
+              placeholder="Your name"
+              maxlength="50"
+              @keydown.enter="saveDisplayName"
+            />
+            <button class="btn-retour" @click="saveDisplayName" :disabled="dnSaving">
+              {{ dnSaved ? 'Saved!' : 'Save' }}
+            </button>
+          </div>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
             <div class="setting-label">Sign out</div>
             <div class="setting-desc">Sign out of your account on this device.</div>
           </div>
@@ -68,13 +86,37 @@
 </template>
 
 <script setup>
+import { ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useSettings } from '../composables/useSettings.js'
 import { useAuth } from '../composables/useAuth.js'
 
 const { settings } = useSettings()
-const { user, logout } = useAuth()
+const { user, logout, updateDisplayName } = useAuth()
 const router = useRouter()
+
+const displayNameInput = ref(user.value?.displayName ?? '')
+const dnSaving = ref(false)
+const dnSaved = ref(false)
+
+// Sync input if user loads after mount
+watch(() => user.value?.displayName, val => {
+  if (displayNameInput.value === '') displayNameInput.value = val ?? ''
+}, { immediate: true })
+
+async function saveDisplayName() {
+  dnSaving.value = true
+  dnSaved.value = false
+  try {
+    await updateDisplayName(displayNameInput.value)
+    dnSaved.value = true
+    setTimeout(() => { dnSaved.value = false }, 2000)
+  } catch {
+    // silently fail — could add error state if needed
+  } finally {
+    dnSaving.value = false
+  }
+}
 </script>
 
 <style scoped>
@@ -182,6 +224,26 @@ const router = useRouter()
 }
 .about-label { color: var(--text); }
 .about-value { color: var(--text-muted); font-size: 0.85rem; }
+
+.display-name-field {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.dn-input {
+  width: 140px;
+  padding: 0.4rem 0.65rem;
+  background: var(--bg);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.85rem;
+  font-family: var(--font-sans);
+  outline: none;
+}
+.dn-input:focus { border-color: var(--accent); }
 
 /* Sign out button */
 .btn-retour {

@@ -49,11 +49,23 @@ export function useAuth() {
     return data.user
   }
 
+  async function updateDisplayName(displayName) {
+    const res = await fetch('/api/auth/profile', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ displayName })
+    })
+    const data = await res.json()
+    if (!res.ok) throw new Error(data.error || 'Update failed')
+    user.value = { ...user.value, displayName: data.displayName }
+    return data.displayName
+  }
+
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' })
     user.value = null
     router.push('/login')
   }
 
-  return { user, isLoggedIn, isAdmin, loading, loadUser, login, register, logout }
+  return { user, isLoggedIn, isAdmin, loading, loadUser, login, register, logout, updateDisplayName }
 }
