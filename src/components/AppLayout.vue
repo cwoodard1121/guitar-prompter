@@ -27,6 +27,13 @@
       </div>
 
       <div class="nav-group nav-bottom">
+        <div v-if="user" class="user-info">
+          <span class="user-email">{{ user.email }}</span>
+          <button class="nav-link nav-logout" @click="logout" title="Log out">
+            <LogOut :size="17" />
+            <span class="nav-label">Log out</span>
+          </button>
+        </div>
         <button class="nav-link nav-help" @click="restartTour" title="Take the tour">
           <HelpCircle :size="17" />
           <span class="nav-label">Tour</span>
@@ -46,11 +53,13 @@
 
 <script setup>
 import { useRoute, RouterLink } from 'vue-router'
-import { Guitar, Home, FilePlus, ListPlus, Settings, HelpCircle } from 'lucide-vue-next'
+import { Guitar, Home, FilePlus, ListPlus, Settings, HelpCircle, LogOut } from 'lucide-vue-next'
 import { useSettings } from '../composables/useSettings.js'
+import { useAuth } from '../composables/useAuth.js'
 
 const route = useRoute()
 const { settings } = useSettings()
+const { user, logout } = useAuth()
 
 function restartTour() {
   settings.value.tourSeen = false
@@ -164,7 +173,25 @@ function restartTour() {
   padding-top: 0.75rem;
 }
 
-.nav-help {
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-bottom: 0.25rem;
+}
+
+.user-email {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.nav-help,
+.nav-logout {
   background: none;
   border: none;
   cursor: pointer;

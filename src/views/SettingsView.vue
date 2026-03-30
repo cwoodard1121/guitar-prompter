@@ -5,6 +5,21 @@
     <div class="settings-body">
 
       <div class="settings-section">
+        <div class="section-title">Account</div>
+        <div v-if="user" class="about-row">
+          <span class="about-label">Signed in as</span>
+          <span class="about-value" style="overflow:hidden;text-overflow:ellipsis;max-width:180px;white-space:nowrap">{{ user.email }}</span>
+        </div>
+        <div class="setting-row">
+          <div class="setting-info">
+            <div class="setting-label">Sign out</div>
+            <div class="setting-desc">Sign out of your account on this device.</div>
+          </div>
+          <button class="btn-retour" @click="logout">Sign out</button>
+        </div>
+      </div>
+
+      <div class="settings-section">
         <div class="section-title">Beta</div>
 
         <div class="setting-row">
@@ -53,10 +68,12 @@
 </template>
 
 <script setup>
-import { useSettings } from '../composables/useSettings.js'
 import { useRouter } from 'vue-router'
+import { useSettings } from '../composables/useSettings.js'
+import { useAuth } from '../composables/useAuth.js'
 
 const { settings } = useSettings()
+const { user, logout } = useAuth()
 const router = useRouter()
 </script>
 
@@ -152,25 +169,6 @@ const router = useRouter()
   left: calc(100% - 1.3rem);
 }
 
-/* Tour button */
-.btn-retour {
-  flex-shrink: 0;
-  padding: 0.45rem 0.9rem;
-  border-radius: var(--radius-sm, 8px);
-  background: rgba(255,255,255,0.06);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: var(--text, #edeef5);
-  font-size: 0.82rem;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-  white-space: nowrap;
-}
-.btn-retour:hover {
-  background: rgba(255,255,255,0.11);
-  border-color: rgba(255,255,255,0.2);
-}
-
 /* About rows */
 .about-row {
   display: flex;
@@ -184,4 +182,26 @@ const router = useRouter()
 }
 .about-label { color: var(--text); }
 .about-value { color: var(--text-muted); font-size: 0.85rem; }
+
+/* Sign out button */
+.btn-retour {
+  flex-shrink: 0;
+  padding: 0.45rem 0.9rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 500;
+  font-family: var(--font-sans);
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  white-space: nowrap;
+}
+
+.btn-retour:hover {
+  background: rgba(232, 54, 93, 0.1);
+  border-color: rgba(232, 54, 93, 0.3);
+  color: var(--accent);
+}
 </style>
