@@ -7,6 +7,7 @@ const loading = ref(true)
 export function useAuth() {
   const router = useRouter()
   const isLoggedIn = computed(() => !!user.value)
+  const isAdmin = computed(() => !!user.value?.isAdmin)
 
   async function loadUser() {
     try {
@@ -54,5 +55,5 @@ export function useAuth() {
     router.push('/login')
   }
 
-  return { user, isLoggedIn, loading, loadUser, login, register, logout }
+  return { user, isLoggedIn, isAdmin, loading, loadUser, login, register, logout }
 }

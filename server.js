@@ -56,6 +56,9 @@ function checkRateLimit(ip) {
   return entry
 }
 
+// ── Admin ────────────────────────────────────────────────────────────────────
+const ADMIN_EMAILS = new Set(['cameronwoodard1121@gmail.com'])
+
 // ── Auth middleware ──────────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
   const token = req.cookies['gp-token']
@@ -67,6 +70,15 @@ function requireAuth(req, res, next) {
     res.clearCookie('gp-token')
     res.status(401).json({ error: 'Session expired' })
   }
+}
+
+function requireAdmin(req, res, next) {
+  requireAuth(req, res, () => {
+    if (!ADMIN_EMAILS.has(req.user.email)) {
+      return res.status(403).json({ error: 'Admin only' })
+    }
+    next()
+  })
 }
 
 // Optional auth — attaches user if logged in but doesn't block
@@ -212,7 +224,7 @@ app.post('/api/auth/logout', (req, res) => {
 
 // GET /api/auth/me
 app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({ user: { id: req.user.id, email: req.user.email } })
+  res.json({ user: { id: req.user.id, email: req.user.email, isAdmin: ADMIN_EMAILS.has(req.user.email) } })
 })
 
 // ── Songs CRUD ──────────────────────────────────────────────────────────────
@@ -519,6 +531,68 @@ app.post('/api/community/:id/like', requireAuth, async (req, res) => {
     await supabase.from('songs').update({ likes_count: newCount }).eq('id', songId)
     return res.json({ liked: true, likesCount: newCount })
   }
+})
+
+// ── Admin endpoints ──────────────────────────────────────────────────────────
+
+app.get('/api/admin/songs', requireAdmin, async (_req, res) => {
+  const { data, error } = await supabase
+    .from('songs')
+    .select('id, title, artist, is_public, likes_count, user_id, created_at, users:user_id ( email )')
+    .order('created_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+  const songs = (data || []).map(row => ({
+    id: row.id,
+    title: row.title ?? '',
+    artist: row.artist ?? '',
+    isPublic: row.is_public ?? false,
+    likesCount: row.likes_count ?? 0,
+    ownerEmail: row.users?.email ?? null,
+    createdAt: row.created_at
+  }))
+  res.json(songs)
+})
+
+app.get('/api/admin/users', requireAdmin, async (_req, res) => {
+  const { data: users, error } = await supabase
+    .from('users')
+    .select('id, email, display_name, created_at')
+    .order('created_at', { ascending: false })
+  if (error) return res.status(500).json({ error: error.message })
+
+  // Get song counts per user
+  const { data: counts } = await supabase
+    .from('songs')
+    .select('user_id')
+    .not('user_id', 'is', null)
+  const countMap = {}
+  ;(counts || []).forEach(r => { countMap[r.user_id] = (countMap[r.user_id] || 0) + 1 })
+
+  res.json((users || []).map(u => ({
+    id: u.id,
+    email: u.email,
+    displayName: u.display_name ?? null,
+    songCount: countMap[u.id] ?? 0,
+    createdAt: u.created_at
+  })))
+})
+
+app.put('/api/admin/songs/:id/unpublish', requireAdmin, async (req, res) => {
+  const { error } = await supabase
+    .from('songs')
+    .update({ is_public: false, likes_count: 0 })
+    .eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  // Clean up song_likes for this song
+  await supabase.from('song_likes').delete().eq('song_id', req.params.id)
+  res.json({ ok: true })
+})
+
+app.delete('/api/admin/songs/:id', requireAdmin, async (req, res) => {
+  await supabase.from('song_likes').delete().eq('song_id', req.params.id)
+  const { error } = await supabase.from('songs').delete().eq('id', req.params.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ ok: true })
 })
 
 // ── Serve built Vue app ──────────────────────────────────────────────────────
