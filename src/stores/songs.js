@@ -1,11 +1,24 @@
 import { defineStore } from 'pinia'
 import { ref } from 'vue'
+import router from '../router/index.js'
+import { useAuth } from '../composables/useAuth.js'
 
 const API_BASE = '/api/songs'
 
+async function apiFetch(url, opts = {}) {
+  const res = await fetch(url, opts)
+  if (res.status === 401) {
+    const { user } = useAuth()
+    user.value = null
+    router.push('/login')
+    throw new Error('Session expired. Please log in again.')
+  }
+  return res
+}
+
 async function fetchSongs() {
   try {
-    const res = await fetch(API_BASE)
+    const res = await apiFetch(API_BASE)
     if (!res.ok) throw new Error('Failed to fetch songs')
     return await res.json()
   } catch (e) {
@@ -17,7 +30,7 @@ async function fetchSongs() {
 
 async function createSong(song) {
   try {
-    const res = await fetch(API_BASE, {
+    const res = await apiFetch(API_BASE, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(song)
@@ -33,7 +46,7 @@ async function createSong(song) {
 
 async function updateSongServer(id, data) {
   try {
-    const res = await fetch(`${API_BASE}?id=${id}`, {
+    const res = await apiFetch(`${API_BASE}?id=${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(data)
@@ -48,7 +61,7 @@ async function updateSongServer(id, data) {
 
 async function deleteSongServer(id) {
   try {
-    const res = await fetch(`${API_BASE}?id=${id}`, { method: 'DELETE' })
+    const res = await apiFetch(`${API_BASE}?id=${id}`, { method: 'DELETE' })
     if (!res.ok) throw new Error('Failed to delete song')
     return true
   } catch (e) {
