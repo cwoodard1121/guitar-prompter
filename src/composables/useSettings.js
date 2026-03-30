@@ -2,6 +2,7 @@ import { ref, watch } from 'vue'
 
 const DEFAULTS = {
   experimentalFeatures: false,
+  tourSeen: false,
 }
 
 function load() {
