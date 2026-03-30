@@ -5,13 +5,14 @@ import path from 'path'
 import { fileURLToPath } from 'url'
 import OpenAI, { toFile } from 'openai'
 import { createClient } from '@supabase/supabase-js'
+import bcrypt from 'bcryptjs'
+import jwt from 'jsonwebtoken'
+import cookieParser from 'cookie-parser'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
 const PORT = process.env.PORT || 3000
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
-
-const PASSWORD = process.env.SITE_PASSWORD || null
 
 // ── Supabase ─────────────────────────────────────────────────────────────────
 const supabase = createClient(
@@ -19,6 +20,65 @@ const supabase = createClient(
   process.env.SUPABASE_KEY
 )
 
+// ── JWT helpers ──────────────────────────────────────────────────────────────
+const JWT_SECRET = process.env.JWT_SECRET
+if (!JWT_SECRET || JWT_SECRET.length < 32) {
+  console.warn('WARNING: JWT_SECRET is missing or too short. Auth will not work securely.')
+}
+
+function signToken(user) {
+  return jwt.sign(
+    { id: user.id, email: user.email },
+    JWT_SECRET,
+    { expiresIn: '7d' }
+  )
+}
+
+function setAuthCookie(res, token) {
+  res.cookie('gp-token', token, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+    maxAge: 7 * 24 * 60 * 60 * 1000  // 7 days in ms
+  })
+}
+
+// ── Rate limiting ────────────────────────────────────────────────────────────
+const loginAttempts = new Map() // ip -> { count, resetAt }
+
+function checkRateLimit(ip) {
+  const now = Date.now()
+  const entry = loginAttempts.get(ip) || { count: 0, resetAt: now + 15 * 60 * 1000 }
+  if (now > entry.resetAt) {
+    entry.count = 0
+    entry.resetAt = now + 15 * 60 * 1000
+  }
+  return entry
+}
+
+// ── Auth middleware ──────────────────────────────────────────────────────────
+function requireAuth(req, res, next) {
+  const token = req.cookies['gp-token']
+  if (!token) return res.status(401).json({ error: 'Not authenticated' })
+  try {
+    req.user = jwt.verify(token, JWT_SECRET)
+    next()
+  } catch {
+    res.clearCookie('gp-token')
+    res.status(401).json({ error: 'Session expired' })
+  }
+}
+
+// Optional auth — attaches user if logged in but doesn't block
+function optionalAuth(req, res, next) {
+  const token = req.cookies['gp-token']
+  if (token) {
+    try { req.user = jwt.verify(token, JWT_SECRET) } catch { /* ignore */ }
+  }
+  next()
+}
+
+// ── Row mappers ──────────────────────────────────────────────────────────────
 function rowToSong(row) {
   return {
     id: row.id,
@@ -44,113 +104,158 @@ function songToRow(song) {
   }
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-function parseCookies(cookieHeader) {
-  return Object.fromEntries(
-    cookieHeader.split(';').map(c => c.trim().split('=').map(decodeURIComponent))
-  )
-}
-
-// ── Password protection ─────────────────────────────────────────────────────
-// Simple cookie-based gate. Set SITE_PASSWORD env var to enable.
-if (PASSWORD) {
-  app.use((req, res, next) => {
-    // Always allow the login page and auth endpoint
-    if (req.path === '/login' || req.path === '/api/auth') return next()
-
-    const cookies = parseCookies(req.headers.cookie || '')
-    if (cookies['gp-auth'] === PASSWORD) return next()
-
-    // API calls get a 401 instead of redirect
-    if (req.path.startsWith('/api/')) {
-      return res.status(401).json({ error: 'Unauthorized' })
-    }
-
-    // Redirect everything else to login
-    res.redirect('/login')
-  })
-
-  app.get('/login', (_req, res) => {
-    res.send(`<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Guitar Prompter — Login</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0 }
-    body { background: #1a1a2e; color: #eee; font-family: system-ui, sans-serif;
-           display: flex; align-items: center; justify-content: center; min-height: 100dvh }
-    .card { background: #16213e; border-radius: 12px; padding: 2rem; width: min(340px, 90vw);
-            display: flex; flex-direction: column; gap: 1rem; box-shadow: 0 8px 32px #0006 }
-    h1 { font-size: 1.3rem; text-align: center }
-    p { font-size: 0.85rem; color: #888; text-align: center }
-    input { width: 100%; padding: 0.75rem; border-radius: 8px; border: 1px solid #333;
-            background: #0f3460; color: #eee; font-size: 1rem; outline: none }
-    input:focus { border-color: #e94560 }
-    button { width: 100%; padding: 0.85rem; border-radius: 8px; border: none;
-             background: #e94560; color: #fff; font-size: 1rem; font-weight: 700; cursor: pointer }
-    .err { color: #e94560; font-size: 0.85rem; text-align: center; display: none }
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>🎸 Guitar Prompter</h1>
-    <p>Alpha — friends only</p>
-    <input id="pw" type="password" placeholder="Password" autofocus />
-    <button onclick="login()">Enter</button>
-    <div class="err" id="err">Wrong password</div>
-  </div>
-  <script>
-    document.getElementById('pw').addEventListener('keydown', e => e.key === 'Enter' && login())
-    async function login() {
-      const pw = document.getElementById('pw').value
-      const r = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password: pw })
-      })
-      if (r.ok) { location.href = '/' }
-      else { document.getElementById('err').style.display = 'block' }
-    }
-  </script>
-</body>
-</html>`)
-  })
-
-  app.post('/api/auth', express.json(), (req, res) => {
-    if (req.body?.password === PASSWORD) {
-      res.setHeader('Set-Cookie', `gp-auth=${PASSWORD}; Path=/; HttpOnly; SameSite=Strict; Max-Age=2592000`)
-      return res.json({ ok: true })
-    }
-    res.status(401).json({ error: 'Wrong password' })
-  })
-}
+// ── Middleware ───────────────────────────────────────────────────────────────
+app.use(cookieParser())
+app.use(express.json())
 
 // ── Health check ─────────────────────────────────────────────────────────────
 app.get('/api/health', (_req, res) => res.json({ ok: true }))
 
-// ── Body parsing ────────────────────────────────────────────────────────────
-app.use(express.json())
+// ── Auth endpoints ───────────────────────────────────────────────────────────
+
+// POST /api/auth/register
+app.post('/api/auth/register', async (req, res) => {
+  const { email, password } = req.body || {}
+
+  // Validate
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+    return res.status(400).json({ error: 'Valid email required' })
+  }
+  if (!password || password.length < 8) {
+    return res.status(400).json({ error: 'Password must be at least 8 characters' })
+  }
+
+  const cleanEmail = email.trim().toLowerCase()
+
+  try {
+    // Check if email taken
+    const { data: existing } = await supabase
+      .from('users')
+      .select('id')
+      .eq('email', cleanEmail)
+      .maybeSingle()
+
+    if (existing) return res.status(409).json({ error: 'Email already registered' })
+
+    // Hash password
+    const password_hash = await bcrypt.hash(password, 12)
+
+    // Create user
+    const { data: user, error } = await supabase
+      .from('users')
+      .insert({ email: cleanEmail, password_hash })
+      .select('id, email, display_name, created_at')
+      .single()
+
+    if (error) throw error
+
+    const token = signToken(user)
+    setAuthCookie(res, token)
+    res.json({ user: { id: user.id, email: user.email, displayName: user.display_name } })
+  } catch (e) {
+    console.error('Register error:', e)
+    res.status(500).json({ error: 'Registration failed' })
+  }
+})
+
+// POST /api/auth/login
+app.post('/api/auth/login', async (req, res) => {
+  const ip = req.ip || req.connection.remoteAddress || 'unknown'
+  const entry = checkRateLimit(ip)
+
+  if (entry.count >= 5) {
+    const retryAfter = Math.ceil((entry.resetAt - Date.now()) / 1000)
+    return res.status(429).json({ error: `Too many attempts. Try again in ${Math.ceil(retryAfter / 60)} minutes.` })
+  }
+
+  const { email, password } = req.body || {}
+  if (!email || !password) return res.status(400).json({ error: 'Email and password required' })
+
+  const cleanEmail = email.trim().toLowerCase()
+
+  try {
+    const { data: user } = await supabase
+      .from('users')
+      .select('id, email, display_name, password_hash')
+      .eq('email', cleanEmail)
+      .maybeSingle()
+
+    // Use constant-time compare even on "not found" to prevent user enumeration
+    const hash = user?.password_hash || '$2a$12$invalidhashforcomparison000000000000000000000000000'
+    const valid = await bcrypt.compare(password, hash)
+
+    if (!user || !valid) {
+      entry.count++
+      loginAttempts.set(ip, entry)
+      return res.status(401).json({ error: 'Invalid email or password' })
+    }
+
+    // Success — reset rate limit
+    loginAttempts.delete(ip)
+
+    const token = signToken(user)
+    setAuthCookie(res, token)
+    res.json({ user: { id: user.id, email: user.email, displayName: user.display_name } })
+  } catch (e) {
+    console.error('Login error:', e)
+    res.status(500).json({ error: 'Login failed' })
+  }
+})
+
+// POST /api/auth/logout
+app.post('/api/auth/logout', (req, res) => {
+  res.clearCookie('gp-token', { httpOnly: true, sameSite: 'strict' })
+  res.json({ ok: true })
+})
+
+// GET /api/auth/me
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  res.json({ user: { id: req.user.id, email: req.user.email } })
+})
 
 // ── Songs CRUD ──────────────────────────────────────────────────────────────
-app.get('/api/songs', async (_req, res) => {
-  const { data, error } = await supabase.from('songs').select('*').order('created_at')
+app.get('/api/songs', optionalAuth, async (req, res) => {
+  let query = supabase.from('songs').select('*').order('created_at', { ascending: false })
+
+  if (req.user) {
+    // Logged in: own songs + global (null user_id) songs
+    query = query.or(`user_id.eq.${req.user.id},user_id.is.null`)
+  } else {
+    // Not logged in: only global songs
+    query = query.is('user_id', null)
+  }
+
+  const { data, error } = await query
   if (error) return res.status(500).json({ error: error.message })
   res.json(data.map(rowToSong))
 })
 
-app.post('/api/songs', async (req, res) => {
+app.post('/api/songs', optionalAuth, async (req, res) => {
   const id = Date.now().toString()
   const { data, error } = await supabase
-    .from('songs').insert({ id, ...songToRow(req.body) }).select().single()
+    .from('songs')
+    .insert({ id, ...songToRow(req.body), user_id: req.user?.id || null })
+    .select()
+    .single()
   if (error) return res.status(500).json({ error: error.message })
   res.status(201).json(rowToSong(data))
 })
 
-app.put('/api/songs', async (req, res) => {
+app.put('/api/songs', optionalAuth, async (req, res) => {
   const id = req.query.id
   if (!id) return res.status(400).json({ error: 'id is required' })
+
+  // Fetch existing song to check ownership
+  const { data: existing } = await supabase
+    .from('songs')
+    .select('user_id')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (existing?.user_id && existing.user_id !== req.user?.id) {
+    return res.status(403).json({ error: 'Not authorized to edit this song' })
+  }
+
   const { data, error } = await supabase
     .from('songs').update(songToRow(req.body)).eq('id', id).select().single()
   if (error) return res.status(500).json({ error: error.message })
@@ -158,9 +263,21 @@ app.put('/api/songs', async (req, res) => {
   res.json(rowToSong(data))
 })
 
-app.delete('/api/songs', async (req, res) => {
+app.delete('/api/songs', optionalAuth, async (req, res) => {
   const id = req.query.id
   if (!id) return res.status(400).json({ error: 'id is required' })
+
+  // Fetch existing song to check ownership
+  const { data: existing } = await supabase
+    .from('songs')
+    .select('user_id')
+    .eq('id', id)
+    .maybeSingle()
+
+  if (existing?.user_id && existing.user_id !== req.user?.id) {
+    return res.status(403).json({ error: 'Not authorized to delete this song' })
+  }
+
   const { error } = await supabase.from('songs').delete().eq('id', id)
   if (error) return res.status(500).json({ error: error.message })
   res.json({ ok: true })
