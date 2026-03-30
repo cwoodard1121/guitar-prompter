@@ -32,6 +32,7 @@ import { RouterView, useRoute } from 'vue-router'
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useSongsStore } from './stores/songs.js'
 import AppLayout from './components/AppLayout.vue'
+import { useAuth } from './composables/useAuth.js'
 
 const store = useSongsStore()
 const route = useRoute()
@@ -54,6 +55,8 @@ async function checkHealth() {
       clearTimers()
       serverStatus.value = 'online'
       store.loadSongs()
+      const { loadUser } = useAuth()
+      await loadUser()
       return
     }
   } catch {
