@@ -27,6 +27,13 @@
       </div>
 
       <div class="nav-group nav-bottom">
+        <div v-if="user" class="user-info">
+          <span class="user-email">{{ user.email }}</span>
+          <button class="nav-link nav-logout" @click="logout" title="Log out">
+            <LogOut :size="17" />
+            <span class="nav-label">Log out</span>
+          </button>
+        </div>
         <RouterLink to="/settings" class="nav-link" :class="{ active: route.path === '/settings' }">
           <Settings :size="17" />
           <span class="nav-label">Settings</span>
@@ -42,9 +49,11 @@
 
 <script setup>
 import { useRoute, RouterLink } from 'vue-router'
-import { Guitar, Home, FilePlus, ListPlus, Settings } from 'lucide-vue-next'
+import { Guitar, Home, FilePlus, ListPlus, Settings, LogOut } from 'lucide-vue-next'
+import { useAuth } from '../composables/useAuth.js'
 
 const route = useRoute()
+const { user, logout } = useAuth()
 </script>
 
 <style scoped>
@@ -152,6 +161,31 @@ const route = useRoute()
   margin-top: auto;
   border-top: 1px solid var(--sidebar-border);
   padding-top: 0.75rem;
+}
+
+.user-info {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+  padding-bottom: 0.25rem;
+}
+
+.user-email {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0 0.75rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.nav-logout {
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
 }
 
 /* Mobile: fixed bottom bar */
