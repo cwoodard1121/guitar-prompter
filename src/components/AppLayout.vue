@@ -13,6 +13,10 @@
           <Home :size="17" />
           <span class="nav-label">Library</span>
         </RouterLink>
+        <RouterLink to="/community" class="nav-link" :class="{ active: route.path === '/community' }">
+          <Users :size="17" />
+          <span class="nav-label">Community</span>
+        </RouterLink>
       </div>
 
       <div class="nav-group nav-ctas">
@@ -53,7 +57,7 @@
 
 <script setup>
 import { useRoute, RouterLink } from 'vue-router'
-import { Guitar, Home, FilePlus, ListPlus, Settings, HelpCircle, LogOut } from 'lucide-vue-next'
+import { Guitar, Home, FilePlus, ListPlus, Settings, HelpCircle, LogOut, Users } from 'lucide-vue-next'
 import { useSettings } from '../composables/useSettings.js'
 import { useAuth } from '../composables/useAuth.js'
 

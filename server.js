@@ -1,13 +1,13 @@
 import { config } from 'dotenv'
 config({ path: '.env.local' })
 import express from 'express'
+import cookieParser from 'cookie-parser'
+import jwt from 'jsonwebtoken'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import OpenAI, { toFile } from 'openai'
 import { createClient } from '@supabase/supabase-js'
 import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
-import cookieParser from 'cookie-parser'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const app = express()
@@ -88,7 +88,9 @@ function rowToSong(row) {
     syncedLyrics: row.synced_lyrics ?? null,
     youtubeId: row.youtube_id ?? null,
     bpm: row.bpm ?? null,
-    syncOffset: row.sync_offset ?? 0
+    syncOffset: row.sync_offset ?? 0,
+    isPublic: row.is_public ?? false,
+    userId: row.user_id ?? null
   }
 }
 
@@ -232,11 +234,13 @@ app.get('/api/songs', optionalAuth, async (req, res) => {
 
 app.post('/api/songs', optionalAuth, async (req, res) => {
   const id = Date.now().toString()
+  const row = {
+    ...songToRow(req.body),
+    user_id: req.user?.id ?? null,
+    is_public: req.body.isPublic ?? false
+  }
   const { data, error } = await supabase
-    .from('songs')
-    .insert({ id, ...songToRow(req.body), user_id: req.user?.id || null })
-    .select()
-    .single()
+    .from('songs').insert({ id, ...row }).select().single()
   if (error) return res.status(500).json({ error: error.message })
   res.status(201).json(rowToSong(data))
 })
@@ -244,6 +248,11 @@ app.post('/api/songs', optionalAuth, async (req, res) => {
 app.put('/api/songs', optionalAuth, async (req, res) => {
   const id = req.query.id
   if (!id) return res.status(400).json({ error: 'id is required' })
+
+  const row = {
+    ...songToRow(req.body),
+    is_public: req.body.isPublic ?? false
+  }
 
   // Fetch existing song to check ownership
   const { data: existing } = await supabase
@@ -257,7 +266,7 @@ app.put('/api/songs', optionalAuth, async (req, res) => {
   }
 
   const { data, error } = await supabase
-    .from('songs').update(songToRow(req.body)).eq('id', id).select().single()
+    .from('songs').update(row).eq('id', id).select().single()
   if (error) return res.status(500).json({ error: error.message })
   if (!data) return res.status(404).json({ error: 'song not found' })
   res.json(rowToSong(data))
@@ -433,6 +442,82 @@ Include verse 1 and the chorus. Output ONLY the chord chart text — no markdown
     res.json({ content })
   } catch (err) {
     res.status(500).json({ error: err.message })
+  }
+})
+
+// ── Community endpoints ───────────────────────────────────────────────────────
+app.get('/api/community', optionalAuth, async (req, res) => {
+  const q = req.query.q?.toLowerCase() || ''
+  const page = parseInt(req.query.page) || 1
+  const limit = 24
+  const offset = (page - 1) * limit
+
+  let query = supabase
+    .from('songs')
+    .select(`
+      id, title, artist, likes_count, user_id,
+      users:user_id ( display_name, email )
+    `, { count: 'exact' })
+    .eq('is_public', true)
+    .order('likes_count', { ascending: false })
+    .range(offset, offset + limit - 1)
+
+  if (q) {
+    query = query.or(`title.ilike.%${q}%,artist.ilike.%${q}%`)
+  }
+
+  const { data, error, count } = await query
+  if (error) return res.status(500).json({ error: error.message })
+
+  let likedIds = new Set()
+  if (req.user) {
+    const { data: likes } = await supabase
+      .from('song_likes')
+      .select('song_id')
+      .eq('user_id', req.user.id)
+    if (likes) likedIds = new Set(likes.map(l => l.song_id))
+  }
+
+  const songs = (data || []).map(row => ({
+    id: row.id,
+    title: row.title ?? '',
+    artist: row.artist ?? '',
+    likesCount: row.likes_count ?? 0,
+    contributor: row.users?.display_name || (row.users?.email ? row.users.email.split('@')[0] : 'Anonymous'),
+    liked: likedIds.has(row.id)
+  }))
+
+  res.json({ songs, total: count ?? 0, page, limit })
+})
+
+app.post('/api/community/:id/like', requireAuth, async (req, res) => {
+  const songId = req.params.id
+  const userId = req.user.id
+
+  const { data: existing } = await supabase
+    .from('song_likes')
+    .select('song_id')
+    .eq('user_id', userId)
+    .eq('song_id', songId)
+    .single()
+
+  if (existing) {
+    await supabase.from('song_likes').delete().eq('user_id', userId).eq('song_id', songId)
+    const { data: song } = await supabase
+      .from('songs')
+      .select('likes_count')
+      .eq('id', songId)
+      .single()
+    const newCount = Math.max(0, (song?.likes_count ?? 1) - 1)
+    await supabase.from('songs').update({ likes_count: newCount }).eq('id', songId)
+    const { data: updated } = await supabase.from('songs').select('likes_count').eq('id', songId).single()
+    return res.json({ liked: false, likesCount: updated?.likes_count ?? 0 })
+  } else {
+    await supabase.from('song_likes').insert({ user_id: userId, song_id: songId })
+    const { data: song } = await supabase.from('songs').select('likes_count').eq('id', songId).single()
+    const newCount = (song?.likes_count ?? 0) + 1
+    await supabase.from('songs').update({ likes_count: newCount }).eq('id', songId)
+    return res.json({ liked: true, likesCount: newCount })
   }
 })
 
