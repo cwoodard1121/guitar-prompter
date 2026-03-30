@@ -223,8 +223,29 @@ app.post('/api/auth/logout', (req, res) => {
 })
 
 // GET /api/auth/me
-app.get('/api/auth/me', requireAuth, (req, res) => {
-  res.json({ user: { id: req.user.id, email: req.user.email, isAdmin: ADMIN_EMAILS.has(req.user.email) } })
+app.get('/api/auth/me', requireAuth, async (req, res) => {
+  const { data } = await supabase
+    .from('users')
+    .select('display_name')
+    .eq('id', req.user.id)
+    .single()
+  res.json({ user: {
+    id: req.user.id,
+    email: req.user.email,
+    displayName: data?.display_name ?? null,
+    isAdmin: ADMIN_EMAILS.has(req.user.email)
+  } })
+})
+
+// PUT /api/auth/profile
+app.put('/api/auth/profile', requireAuth, async (req, res) => {
+  const displayName = (req.body.displayName ?? '').trim().slice(0, 50)
+  const { error } = await supabase
+    .from('users')
+    .update({ display_name: displayName || null })
+    .eq('id', req.user.id)
+  if (error) return res.status(500).json({ error: error.message })
+  res.json({ ok: true, displayName: displayName || null })
 })
 
 // ── Songs CRUD ──────────────────────────────────────────────────────────────
