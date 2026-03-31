@@ -5,8 +5,9 @@
 //   3. Section labels like [Verse 1], [Chorus], etc.
 //   4. Chord-only sections (intros, outros)
 
-// Regex to detect a chord token: starts with A-G, optional #/b, optional modifier
-const CHORD_TOKEN = /^[A-G][#b]?(?:m(?:aj7|7)?|7|sus2|sus4|add9|dim|aug|5)?(?:\/[A-G][#b]?)?$/
+// Regex to detect a chord token: starts with A-G, optional #/b, optional modifier(s)
+// Supports: Am, Amaj7, F#m7add11, Asus4, Adim7, E7, Cadd9, D/F#, etc.
+const CHORD_TOKEN = /^[A-G][#b]?(?:m(?:aj)?(?:\d+)?|maj\d*|dim\d?|aug|5|\d+)?(?:add\d+)?(?:sus[24])?(?:\/[A-G][#b]?)?$/
 
 // Check if a line contains only chord tokens and whitespace
 function isChordOnlyLine(line) {
@@ -32,7 +33,7 @@ function isSectionLabel(line) {
 // Extract chords and their column positions from a chord-only line
 function parseChordLine(line) {
   const chords = []
-  const re = /([A-G][#b]?(?:m(?:aj7|7)?|7|sus2|sus4|add9|dim|aug|5)?(?:\/[A-G][#b]?)?)/g
+  const re = /([A-G][#b]?(?:m(?:aj)?(?:\d+)?|maj\d*|dim\d?|aug|5|\d+)?(?:add\d+)?(?:sus[24])?(?:\/[A-G][#b]?)?)/g
   let m
   while ((m = re.exec(line)) !== null) {
     chords.push({ chord: m[1], col: m.index })
@@ -44,7 +45,7 @@ function parseChordLine(line) {
 // Input: "[G]long, [D/F#]long tim[Em]e ago"
 // Output: "[G]  [D/F#]        [Em]\nlong, long time ago"
 function convertInlineChords(line) {
-  const chordPattern = /\[([A-G][#b]?(?:m(?:aj7|7)?|7|sus2|sus4|add9|dim|aug|5)?(?:\/[A-G][#b]?)?)\]/g
+  const chordPattern = /\[([A-G][#b]?(?:m(?:aj)?(?:\d+)?|maj\d*|dim\d?|aug|5|\d+)?(?:add\d+)?(?:sus[24])?(?:\/[A-G][#b]?)?)\]/g
 
   const chords = []
   const textParts = []
@@ -124,7 +125,11 @@ export function parseTabText(raw) {
   let currentSection = ''
 
   for (let i = 0; i < lines.length; i++) {
+    // Strip bar notation (| C D | E |) and repeat markers ((x2), (x3)) while
+    // preserving column positions via 1:1 space replacement
     const line = lines[i]
+      .replace(/\|/g, ' ')
+      .replace(/\(\s*[xX×]\s*\d+\s*\)/g, m => ' '.repeat(m.length))
 
     // Skip empty lines — preserve them as spacing
     if (!line.trim()) {
