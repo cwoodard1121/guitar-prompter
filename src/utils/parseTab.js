@@ -15,9 +15,18 @@ function isChordOnlyLine(line) {
   return tokens.length > 0 && tokens.every(t => CHORD_TOKEN.test(t))
 }
 
+// Check if a line is already in bracket chord format like [E] [Am] [G7]
+function isBracketChordLine(line) {
+  if (!line.trim()) return false
+  const tokens = line.trim().split(/\s+/)
+  return tokens.length > 0 && tokens.every(t =>
+    /^\[/.test(t) && /\]$/.test(t) && CHORD_TOKEN.test(t.slice(1, -1))
+  )
+}
+
 // Check if a line is a section label like [Verse 1], [Chorus], etc.
 function isSectionLabel(line) {
-  return /^\s*\[[^\]]*\]\s*$/.test(line.trim()) && !isChordOnlyLine(line)
+  return /^\s*\[[^\]]*\]\s*$/.test(line.trim()) && !isChordOnlyLine(line) && !isBracketChordLine(line)
 }
 
 // Extract chords and their column positions from a chord-only line
@@ -125,6 +134,20 @@ export function parseTabText(raw) {
         pendingChords = null
       }
       output.push('')
+      continue
+    }
+
+    // Already-formatted bracket chord line like [E] [Am] [G7] — treat as pending chords
+    if (isBracketChordLine(line)) {
+      if (pendingChords) {
+        output.push(pendingChords.map(c => `[${c.chord}]`).join('  '))
+      }
+      const re = /\[([^\]]+)\]/g
+      let m
+      pendingChords = []
+      while ((m = re.exec(line)) !== null) {
+        pendingChords.push({ chord: m[1], col: m.index })
+      }
       continue
     }
 

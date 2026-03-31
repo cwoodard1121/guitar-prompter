@@ -85,7 +85,7 @@ function songsMiddlewarePlugin() {
         }
 
         if (req.method === 'POST') {
-          const data = await readBody()
+          const data = await readBody(req)
           const songs = readSongs()
           const song = { ...data, id: Date.now().toString() }
           songs.push(song)
@@ -95,7 +95,7 @@ function songsMiddlewarePlugin() {
 
         if (req.method === 'PUT') {
           if (!id) return send(400, { error: 'id is required' })
-          const data = await readBody()
+          const data = await readBody(req)
           const songs = readSongs()
           const idx = songs.findIndex(s => s.id === id)
           if (idx === -1) return send(404, { error: 'song not found' })
