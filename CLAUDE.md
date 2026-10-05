@@ -27,7 +27,7 @@ npm run dev            # Vite dev server
 npm test               # unit tests (chords, voicings, note entry, rhythm, sync)
 npm run typecheck
 ```
-Cameron runs it **locally**. An old claude.ai artifact build exists at https://claude.ai/artifact/ViFadHwtotywdnhEJ5xRjE, but he doesn't use it.
+Cameron runs it **locally**, and every push to `master` also deploys to **https://cwoodard1121.github.io/guitar-prompter/** (`.github/workflows/pages.yml`; Supabase URL/key come from repo Actions variables). The hosted site has its own browser storage, so sign in there to get your songs. An old claude.ai artifact build exists at https://claude.ai/artifact/ViFadHwtotywdnhEJ5xRjE, but he doesn't use it.
 
 ## Model (src/model)
 - Song → parts → bars → beats. **All parts have the same bar count** (registered), so a chord part and a tab part line up bar for bar.
