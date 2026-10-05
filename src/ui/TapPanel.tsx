@@ -29,6 +29,7 @@ export function TapPanel({ onCommit, onClose }: Props) {
   const [grid, setGrid] = useState(8);
   const [bars, setBars] = useState(2);
   const [along, setAlong] = useState(true);
+  const [metro, setMetro] = useState(true);
   const [phase, setPhase] = useState<Phase>('ready');
   const [count, setCount] = useState(0);
   const [beatNo, setBeatNo] = useState<number | null>(null);
@@ -63,7 +64,7 @@ export function TapPanel({ onCommit, onClose }: Props) {
     handle.current = play(
       s,
       startBar,
-      { metronome: true, countIn: true, bars },
+      { metronome: metro, countIn: true, bars },
       (pos) => set({ playhead: pos }),
       () => finish(true),
     );
@@ -114,7 +115,7 @@ export function TapPanel({ onCommit, onClose }: Props) {
       cancelAnimationFrame(timer.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grid, bars, along, part.id, song]);
+  }, [grid, bars, along, metro, part.id, song]);
 
   const beatsPerBar = song.timeSig[0];
   const recording = phase !== 'ready';
@@ -149,7 +150,10 @@ export function TapPanel({ onCommit, onClose }: Props) {
               </button>
             ))}
           </div>
-          <button className={'chip' + (along ? ' on' : '')} disabled={recording} onClick={() => setAlong(!along)}>
+          <button className={'chip' + (metro ? ' on' : '')} disabled={recording} onClick={() => setMetro(!metro)} aria-pressed={metro}>
+            <Icon name="metronome" size={12} /> Metronome
+          </button>
+          <button className={'chip' + (along ? ' on' : '')} disabled={recording} onClick={() => setAlong(!along)} aria-pressed={along}>
             Play other parts
           </button>
         </div>
@@ -166,7 +170,7 @@ export function TapPanel({ onCommit, onClose }: Props) {
           <button className="btn btn-ghost" onClick={() => (handle.current ? finish(false) : onClose())}>
             {recording ? 'Cancel' : 'Done'}
           </button>
-          <span className="tap-hint">Space or any letter key taps · Esc cancels</span>
+          <span className="tap-hint">Space or any letter taps · move off the pad or Esc to finish</span>
         </div>
       </div>
       <button
@@ -176,11 +180,23 @@ export function TapPanel({ onCommit, onClose }: Props) {
           if (handle.current) tap();
           else start();
         }}
+        onPointerLeave={(e) => {
+          // sliding the mouse off the pad ends the take: keep what was tapped, drop a take still counting in
+          // (touch fires pointerleave after every tap, so this is mouse-only)
+          if (!handle.current || e.pointerType !== 'mouse') return;
+          finish(phase === 'recording');
+        }}
         aria-label={recording ? 'Tap the rhythm' : 'Start recording'}
       >
         <span key={flash} className="tap-ring" />
         <span className="tap-big">{phase === 'ready' ? 'TAP' : phase === 'countin' ? countLabel : 'TAP'}</span>
         <span className="tap-sub">{phase === 'ready' ? 'press to start' : phase === 'countin' ? 'count-in' : `${countLabel} · ${count} taps`}</span>
+        <span className="tap-beats" aria-hidden="true">
+          {Array.from({ length: beatsPerBar }, (_, i) => {
+            const cur = beatNo === null ? -1 : ((beatNo % beatsPerBar) + beatsPerBar) % beatsPerBar;
+            return <i key={i} className={(i === cur ? 'on' : '') + (i === 0 ? ' down' : '')} />;
+          })}
+        </span>
       </button>
     </div>
   );

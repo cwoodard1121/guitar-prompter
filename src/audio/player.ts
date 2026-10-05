@@ -163,7 +163,7 @@ export function play(
       const at = t0 + t * spt;
       o.frequency.value = k % song.timeSig[0] === 0 ? 1500 : 1000;
       g.gain.setValueAtTime(0.0001, at);
-      g.gain.exponentialRampToValueAtTime(0.25, at + 0.002);
+      g.gain.exponentialRampToValueAtTime(k % song.timeSig[0] === 0 ? 0.6 : 0.38, at + 0.002);
       g.gain.exponentialRampToValueAtTime(0.0001, at + 0.05);
       o.connect(g).connect(master);
       o.start(at);

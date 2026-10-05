@@ -354,3 +354,8 @@ select {
   animation: ring 0.45s var(--ease);
 }
 @keyframes ring { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(5); opacity: 0; } }
+.tap-beats { display: flex; gap: 6px; justify-content: center; margin-top: 6px; }
+.tap-beats i { width: 8px; height: 8px; border-radius: 50%; background: var(--wood-3); transition: background 0.06s; }
+.tap-beats i.on { background: var(--abalone); }
+.tap-beats i.down.on { background: var(--amber); }
+.tap-row .chip { display: inline-flex; align-items: center; gap: 5px; }
