@@ -7,6 +7,7 @@ import { useAccount } from '../storage/useAccount';
 import { loadTrack, trackElement, unloadTrack } from '../audio/track';
 import { Icon } from './Icon';
 import { toast } from './Toaster';
+import { TempoSuggest } from './TempoSuggest';
 
 const MAX_SYNC = 50 * 1024 * 1024;
 const mb = (n?: number) => (!n ? '' : n < 1048576 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)} MB`);
@@ -160,6 +161,7 @@ export function AudioRow() {
           <button className={'btn btn-small' + (finding ? ' btn-primary' : '')} onClick={findBarOne}>
             {finding ? 'Bar 1 starts NOW' : 'Find bar 1 by ear'}
           </button>
+          <TempoSuggest />
           <div className="audio-line">
             <span className="pal-key">Vol</span>
             <input
