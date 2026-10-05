@@ -1,20 +1,22 @@
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
+import { create } from 'zustand';
 import { supabase, supabaseRemote } from './supabase';
 import { setRemote, syncNow } from './storage';
 import { useStore } from '../state/store';
 
-/** Signed-in Supabase user (null = signed out or sync not configured). */
-export function useAccount(): User | null {
-  const [user, setUser] = useState<User | null>(null);
-  useEffect(() => {
-    if (!supabase) return;
-    void supabase.auth.getSession().then(({ data }) => setUser(data.session?.user ?? null));
-    const { data } = supabase.auth.onAuthStateChange((_event, session) => setUser(session?.user ?? null));
-    return () => data.subscription.unsubscribe();
-  }, []);
-  return user;
+const useAuth = create<{ user: User | null }>(() => ({ user: null }));
+if (supabase) {
+  void supabase.auth.getSession().then(({ data }) => useAuth.setState({ user: data.session?.user ?? null }));
+  supabase.auth.onAuthStateChange((_event, session) => {
+    const user = session?.user ?? null;
+    if (user?.id !== useAuth.getState().user?.id) useAuth.setState({ user });
+  });
 }
+
+/** Signed-in Supabase user (null = signed out or sync not configured). */
+export const useAccount = (): User | null => useAuth((s) => s.user);
+export const currentUser = () => useAuth.getState().user;
 
 /** Runs a sync and applies the merged library to the editor. */
 export async function syncAndApply() {

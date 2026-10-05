@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import type { Cursor, Dur, Song } from '../model/types';
 import { cursorNeedsBar, newSong, normalizeCursor, repairSong, type ChordStep } from '../model/song';
-import { deleteLocal, loadLocalSongs, queueRemoteSave, remoteDelete, saveLocal } from '../storage/storage';
+import { deleteLocal, loadLocalSongs, queueRemoteSave, remoteDelete, restoreLocal, saveLocal } from '../storage/storage';
+import { copySong, copyTitle } from '../model/library';
 
 export type CapoView = 'shapes' | 'concert';
 
@@ -36,9 +37,16 @@ interface State {
   redo: () => void;
   set: (p: Partial<Pick<State, 'dur' | 'dotted' | 'stack' | 'chordStep' | 'capoView' | 'focusOnly' | 'playhead' | 'tapping' | 'tapOpen' | 'speed' | 'loopBars' | 'synthOn'>>) => void;
   openSong: (id: string) => void;
-  createSong: () => void;
+  /** Makes a new song and opens it; returns its id. */
+  createSong: () => string;
   importSong: (song: Song) => void;
-  deleteSong: (id: string) => void;
+  /** Adds songs to the library without opening them (multi-file import). */
+  addSongs: (songs: Song[]) => void;
+  /** Copies a song (fresh ids) next to the original; returns the copy's id. */
+  duplicateSong: (id: string) => string | null;
+  /** Deletes a song; returns it so the caller can offer Undo via restoreSong. */
+  deleteSong: (id: string) => Song | null;
+  restoreSong: (song: Song) => void;
   replaceLibrary: (songs: Song[]) => void;
 }
 
@@ -110,7 +118,8 @@ export const useStore = create<State>((set, get) => ({
       cursor: cur,
       past: [...past.slice(-199), song],
       future: [],
-      library: library.map((s) => (s.id === draft.id ? draft : s)),
+      // an unsaved blank joins the library on its first edit
+      library: library.some((s) => s.id === draft.id) ? library.map((s) => (s.id === draft.id ? draft : s)) : [draft, ...library],
     });
   },
 
@@ -166,6 +175,32 @@ export const useStore = create<State>((set, get) => ({
     persist(s);
     rememberLast(s.id);
     set({ library: [s, ...get().library], song: s, cursor: firstCursor(s), past: [], future: [] });
+    return s.id;
+  },
+
+  addSongs(raw) {
+    const now = Date.now();
+    const added = raw.map((r, i) => repairSong({ ...r, updatedAt: now + i }));
+    added.forEach(persist);
+    const ids = new Set(added.map((s) => s.id));
+    set({ library: [...added.reverse(), ...get().library.filter((x) => !ids.has(x.id))] });
+  },
+
+  duplicateSong(id) {
+    const { library } = get();
+    const src = id === get().song.id ? get().song : library.find((s) => s.id === id);
+    if (!src) return null;
+    const copy = copySong(src, copyTitle(src.title, library.map((s) => s.title)));
+    persist(copy);
+    set({ library: [copy, ...library] });
+    return copy.id;
+  },
+
+  restoreSong(song) {
+    const s = { ...song, updatedAt: Date.now() };
+    restoreLocal(s);
+    queueRemoteSave(s);
+    set({ library: [s, ...get().library.filter((x) => x.id !== s.id)] });
   },
 
   importSong(raw) {
@@ -182,18 +217,21 @@ export const useStore = create<State>((set, get) => ({
   },
 
   deleteSong(id) {
+    const gone = get().library.find((s) => s.id === id) ?? null;
     const at = Date.now();
     deleteLocal(id, at);
     void remoteDelete(id, at);
     const library = get().library.filter((s) => s.id !== id);
-    if (!library.length) {
-      const fresh = newSong();
-      persist(fresh); // only a brand-new song is written; never re-save another song from memory (could be stale)
-      library.push(fresh);
+    if (get().song.id !== id) {
+      set({ library });
+      return gone;
     }
-    const song = get().song.id === id ? library[0] : get().song;
+    // The open song went away. Fall back to the next one, or an unsaved blank that
+    // only reaches storage if it's edited (the library stays empty until then).
+    const song = library[0] ?? newSong();
     rememberLast(song.id);
-    set({ library, song, cursor: firstCursor(song), past: [], future: [] });
+    set({ library, song, cursor: firstCursor(song), past: [], future: [], playhead: null });
+    return gone;
   },
 
   /** Applies a synced library: keeps the open song (taking the remote copy if it's newer), or moves on if it was deleted elsewhere. */
@@ -207,13 +245,9 @@ export const useStore = create<State>((set, get) => ({
       set({ library: songs.map((s) => (s.id === song.id ? song : s)), song, cursor: normalizeCursor(song, get().cursor, false) });
       return;
     }
-    let next = songs[0];
-    if (!next) {
-      next = newSong();
-      persist(next);
-    }
+    const next = songs[0] ?? newSong(); // unsaved blank when everything was deleted elsewhere
     rememberLast(next.id);
-    set({ library: songs.length ? songs : [next], song: next, cursor: firstCursor(next), past: [], future: [] });
+    set({ library: songs, song: next, cursor: firstCursor(next), past: [], future: [] });
   },
 }));
 

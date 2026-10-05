@@ -6,4 +6,6 @@ import { viteSingleFile } from 'vite-plugin-singlefile';
 export default defineConfig(({ mode }) => ({
   plugins: [react(), ...(mode === 'single' ? [viteSingleFile()] : [])],
   build: { outDir: mode === 'single' ? 'dist-single' : 'dist' },
+  // only the app's own tests (not .claude/ plugins or build output)
+  test: { include: ['src/**/*.test.ts'] },
 }));
