@@ -1,5 +1,5 @@
 import type { Song } from '../model/types';
-import { barCapacity, beatTicks } from '../model/song';
+import { barCapacity, beatTicks, playOrder } from '../model/song';
 import { findVoicings } from '../model/voicing';
 
 let ac: AudioContext | null = null;
@@ -55,6 +55,8 @@ export interface PlayHandle {
 interface Ev {
   time: number;
   midis: number[];
+  /** Bend in semitones per midi entry (0 = none). */
+  bends?: number[];
   strum: boolean;
   len: number;
 }
@@ -66,7 +68,7 @@ interface Ev {
 export function play(
   song: Song,
   fromBar: number,
-  opts: { metronome: boolean; countIn?: boolean; bars?: number },
+  opts: { metronome: boolean; countIn?: boolean; bars?: number; speed?: number; synth?: boolean },
   onBeat: (pos: Record<string, { bar: number; beat: number }>) => void,
   onEnd: () => void,
 ): PlayHandle {
@@ -74,12 +76,13 @@ export function play(
   const master = ctx.createGain();
   master.gain.value = 0.55;
   master.connect(ctx.destination);
-  const spt = 60 / song.tempo / 16; // seconds per tick (quarter = 16)
+  const spt = 60 / (song.tempo * (opts.speed ?? 1)) / 16; // seconds per tick (quarter = 16)
   const cap = barCapacity(song);
   const countInSec = opts.countIn ? cap * spt : 0;
   const t0 = ctx.currentTime + 0.12 + countInSec;
-  const songBars = song.parts[0]?.bars.length ?? 0;
-  const nBars = Math.max(songBars, opts.bars ? fromBar + opts.bars : 0);
+  // the bars in the order they play (repeats expanded), optionally limited to `bars`
+  const order = playOrder(song, fromBar).slice(0, opts.bars ?? Infinity);
+  const slots = Math.max(order.length, opts.bars ?? 0); // recording may run past the last bar
   const timeline: { t: number; partId: string; bar: number; beat: number }[] = [];
   const ticks: number[] = [];
   const events: Ev[] = [];
@@ -88,15 +91,16 @@ export function play(
     let chord: string | undefined;
     // carry the chord in effect before the start bar
     for (let b = 0; b < fromBar; b++) for (const bt of part.bars[b].beats) if (bt.chord) chord = bt.chord;
-    for (let b = fromBar; b < songBars && b < nBars; b++) {
-      let tick = (b - fromBar) * cap;
+    for (let k = 0; k < order.length; k++) {
+      const b = order[k];
+      let tick = k * cap;
       part.bars[b].beats.forEach((beat, bi) => {
         const time = t0 + tick * spt;
         const len = beatTicks(beat) * spt;
         timeline.push({ t: time, partId: part.id, bar: b, beat: bi });
         if (beat.chord) chord = beat.chord;
         tick += beatTicks(beat);
-        if (part.muted || beat.rest) return;
+        if (part.muted || beat.rest || opts.synth === false) return;
         if (part.kind === 'tab' && !beat.notes.length) {
           ticks.push(time); // tapped slot with no notes yet: a muted "chk" so the rhythm is audible
           return;
@@ -106,10 +110,12 @@ export function play(
             time,
             len,
             strum: beat.notes.length > 2,
-            midis: beat.notes
-              .map((n) => ({ s: n.string, m: part.tuning[n.string] + part.capo + n.fret }))
-              .sort((a, z) => z.s - a.s)
-              .map((x) => x.m),
+            ...(() => {
+              const ns = beat.notes
+                .map((n) => ({ s: n.string, m: part.tuning[n.string] + part.capo + n.fret, b: n.bend ?? 0 }))
+                .sort((a, z) => z.s - a.s);
+              return { midis: ns.map((x) => x.m), bends: ns.map((x) => x.b) };
+            })(),
           });
         } else if (part.kind === 'chords' && chord) {
           const v = findVoicings(chord, part.tuning)[0];
@@ -130,6 +136,11 @@ export function play(
       const g = ctx.createGain();
       const start = ev.time + (ev.strum ? i * 0.014 : 0);
       const end = start + Math.max(0.12, ev.len) + 0.08;
+      const bend = ev.bends?.[i] ?? 0;
+      if (bend) {
+        src.playbackRate.setValueAtTime(1, start + 0.02);
+        src.playbackRate.linearRampToValueAtTime(2 ** (bend / 12), start + Math.min(0.28, ev.len * 0.6));
+      }
       g.gain.setValueAtTime(ev.strum ? 0.32 : 0.5, start);
       g.gain.setTargetAtTime(0, end, 0.05);
       src.connect(g).connect(master);
@@ -152,11 +163,11 @@ export function play(
     sources.push(src);
   }
 
-  const total = (nBars - fromBar) * cap * spt;
+  const total = slots * cap * spt;
   if (opts.metronome || opts.countIn) {
     const step = 64 / song.timeSig[1];
     const startTick = opts.countIn ? -cap : 0;
-    const endTick = opts.metronome ? (nBars - fromBar) * cap : 0;
+    const endTick = opts.metronome ? slots * cap : 0;
     for (let t = startTick, k = 0; t < endTick; t += step, k++) {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
@@ -216,6 +227,9 @@ export function play(
   }
   return { stop, t0, spt, heardNow: () => ctx.currentTime - (ctx.outputLatency || 0) };
 }
+
+/** The shared AudioContext (created on first use). */
+export const audioClock = () => audio();
 
 /** Plays a single pitch or chord immediately (fretboard / palette feedback). */
 export function audition(midis: number[], strum = false) {

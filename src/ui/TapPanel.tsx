@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, focusedPart } from '../state/store';
-import { play, type PlayHandle } from '../audio/player';
+import { audioClock, play, type PlayHandle } from '../audio/player';
+import { startTrack, stopTrack } from '../audio/track';
 import { quantizeTaps, type RawTap, type TapNote } from '../model/rhythm';
 import { barCapacity } from '../model/song';
 import { Icon } from './Icon';
@@ -45,6 +46,7 @@ export function TapPanel({ onCommit, onClose }: Props) {
     handle.current = null;
     cancelAnimationFrame(timer.current);
     h?.stop();
+    stopTrack();
     set({ playhead: null });
     setPhase('ready');
     setBeatNo(null);
@@ -65,12 +67,13 @@ export function TapPanel({ onCommit, onClose }: Props) {
     handle.current = play(
       s,
       startBar,
-      { metronome: metro, countIn: true, bars },
+      { metronome: metro, countIn: true, bars, speed: useStore.getState().speed, synth: useStore.getState().synthOn },
       (pos) => set({ playhead: pos }),
       () => finish(true),
     );
     setPhase('countin');
     const h = handle.current;
+    startTrack(song, startBar, h, audioClock(), useStore.getState().speed); // the recording plays along
     const beatSec = (64 / song.timeSig[1]) * h.spt;
     const tick = () => {
       if (!handle.current) return;

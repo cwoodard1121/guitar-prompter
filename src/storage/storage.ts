@@ -39,10 +39,20 @@ export function loadLocalSongs(): Song[] {
   return Object.values(readLocal()).map(repairSong).sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
+/** Saves a song unless storage already holds a newer copy (e.g. written by another tab). */
 export function saveLocal(song: Song) {
   const all = readLocal();
+  const there = all[song.id];
+  if (there && there.updatedAt > song.updatedAt) return;
   all[song.id] = song;
   write(KEY, all);
+}
+
+/** Calls back when another tab changes the saved songs. */
+export function onOtherTabChange(cb: () => void) {
+  const h = (e: StorageEvent) => e.key === KEY && cb();
+  window.addEventListener('storage', h);
+  return () => window.removeEventListener('storage', h);
 }
 
 /** Removes a song here and remembers the delete so the next sync sends it on. */

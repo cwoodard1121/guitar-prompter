@@ -23,12 +23,18 @@ interface State {
   /** Tap-rhythm panel open (its keys take over the keyboard). */
   tapping: boolean;
   tapOpen: boolean;
+  /** Playback speed (1 = song tempo). The recording keeps its pitch. */
+  speed: number;
+  /** Loop this many bars from the cursor while playing (0 = off). */
+  loopBars: number;
+  /** Hear the synth playing the tab/chords (off = just the recording + metronome). */
+  synthOn: boolean;
 
   edit: (fn: (draft: Song, cursor: Cursor) => Cursor | void) => void;
   setCursor: (c: Partial<Cursor>) => void;
   undo: () => void;
   redo: () => void;
-  set: (p: Partial<Pick<State, 'dur' | 'dotted' | 'stack' | 'chordStep' | 'capoView' | 'focusOnly' | 'playhead' | 'tapping' | 'tapOpen'>>) => void;
+  set: (p: Partial<Pick<State, 'dur' | 'dotted' | 'stack' | 'chordStep' | 'capoView' | 'focusOnly' | 'playhead' | 'tapping' | 'tapOpen' | 'speed' | 'loopBars' | 'synthOn'>>) => void;
   openSong: (id: string) => void;
   createSong: () => void;
   importSong: (song: Song) => void;
@@ -88,6 +94,9 @@ export const useStore = create<State>((set, get) => ({
   playhead: null,
   tapping: false,
   tapOpen: false,
+  speed: 1,
+  loopBars: 0,
+  synthOn: true,
 
   edit(fn) {
     const { song, cursor, past, library } = get();
@@ -177,9 +186,12 @@ export const useStore = create<State>((set, get) => ({
     deleteLocal(id, at);
     void remoteDelete(id, at);
     const library = get().library.filter((s) => s.id !== id);
-    if (!library.length) library.push(newSong());
+    if (!library.length) {
+      const fresh = newSong();
+      persist(fresh); // only a brand-new song is written; never re-save another song from memory (could be stale)
+      library.push(fresh);
+    }
     const song = get().song.id === id ? library[0] : get().song;
-    persist(song);
     rememberLast(song.id);
     set({ library, song, cursor: firstCursor(song), past: [], future: [] });
   },
@@ -189,7 +201,9 @@ export const useStore = create<State>((set, get) => ({
     const open = get().song;
     const synced = songs.find((s) => s.id === open.id);
     if (synced) {
-      const song = synced.updatedAt === open.updatedAt ? open : synced;
+      // newest wins: never let an older copy (another tab, a slow sync) replace newer work
+      const song = synced.updatedAt > open.updatedAt ? synced : open;
+      if (song === open && synced.updatedAt < open.updatedAt) persist(open);
       set({ library: songs.map((s) => (s.id === song.id ? song : s)), song, cursor: normalizeCursor(song, get().cursor, false) });
       return;
     }

@@ -24,6 +24,20 @@ export function TopBar({ user, playing, metronome, onPlay, onMetronome, toast }:
   const library = useStore((s) => s.library);
   const capoView = useStore((s) => s.capoView);
   const focusOnly = useStore((s) => s.focusOnly);
+  const speed = useStore((s) => s.speed);
+  const loopBars = useStore((s) => s.loopBars);
+  const taps = useRef<number[]>([]);
+
+  /** Tap tempo: average the last few taps (a 2 s pause starts over). */
+  function tapTempo() {
+    const now = performance.now();
+    const t = taps.current.filter((x) => now - x < 2000).concat(now).slice(-6);
+    taps.current = t;
+    if (t.length >= 4) {
+      const bpm = Math.round(60000 / ((t[t.length - 1] - t[0]) / (t.length - 1)));
+      if (bpm >= 30 && bpm <= 300) edit((d) => void (d.tempo = bpm));
+    }
+  }
   const part = useStore(focusedPart);
   const { edit, set, openSong, createSong, importSong, deleteSong } = useStore.getState();
   const [menu, setMenu] = useState(false);
@@ -163,6 +177,22 @@ export function TopBar({ user, playing, metronome, onPlay, onMetronome, toast }:
           {['4/4', '3/4', '2/4', '6/8', '12/8', '5/4', '7/8'].map((t) => (
             <option key={t}>{t}</option>
           ))}
+        </select>
+        <button className="icon-btn tap-tempo" onClick={tapTempo} title="Tap tempo: tap 4+ times in time">
+          Tap
+        </button>
+        <select className="speed" aria-label="Playback speed" title="Slow down (the recording keeps its pitch)" value={speed} onChange={(e) => set({ speed: Number(e.target.value) })}>
+          {[1, 0.9, 0.75, 0.6, 0.5].map((v) => (
+            <option key={v} value={v}>
+              {Math.round(v * 100)}%
+            </option>
+          ))}
+        </select>
+        <select className={'loop' + (loopBars ? ' on' : '')} aria-label="Loop" title="Loop bars from the cursor while playing" value={loopBars} onChange={(e) => set({ loopBars: Number(e.target.value) })}>
+          <option value={0}>No loop</option>
+          <option value={1}>Loop 1 bar</option>
+          <option value={2}>Loop 2 bars</option>
+          <option value={4}>Loop 4 bars</option>
         </select>
         <button className={'icon-btn' + (metronome ? ' on' : '')} onClick={onMetronome} aria-pressed={metronome} title="Metronome">
           <Icon name="metronome" size={16} />

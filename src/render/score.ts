@@ -1,7 +1,8 @@
-import { Accidental, Beam, Dot, Formatter, GhostNote, Renderer, Stave, StaveNote, TabNote, TabStave, Voice } from 'vexflow';
+import { Accidental, BarlineType, Beam, Bend, Dot, Formatter, GhostNote, Renderer, Stave, StaveNote, TabNote, TabSlide, TabStave, TabTie, Vibrato, Voice } from 'vexflow';
 import type { Beat, Part, Song } from '../model/types';
 import { barCapacity, beatTicks, isBarFull } from '../model/song';
 import { mod12, transposeChord } from '../model/music';
+import { findVoicings } from '../model/voicing';
 import type { CapoView } from '../state/store';
 
 export interface Theme {
@@ -29,6 +30,8 @@ export interface BarHit {
   x: number;
   w: number;
   beatXs: number[];
+  /** x of each beat on the tab staff (tab parts) — should match beatXs. */
+  tabXs?: number[];
   /** Where a new beat would go, or null when the bar is full. */
   appendX: number | null;
 }
@@ -204,6 +207,7 @@ function drawTabRow(
   const nStr = part.tuning.length;
   const hasChords = sys.bars.some((b) => part.bars[b].beats.some((x) => x.chord));
   const chordRoom = hasChords ? 30 : 8;
+  const hasBends = sys.bars.some((b) => part.bars[b].beats.some((x) => x.notes.some((n) => n.bend)));
   const staveY = y + chordRoom;
   const bars: BarHit[] = [];
   let bottom = y;
@@ -219,22 +223,34 @@ function drawTabRow(
     (stave as unknown as { options: { fill_style: string } }).options.fill_style = staffInk;
     if (i === 0) stave.addClef(bass ? 'bass' : 'treble', 'default', '8vb');
     if (bar === 0) stave.addTimeSignature(`${song.timeSig[0]}/${song.timeSig[1]}`);
-    const tabY = stave.getBottomLineY() + 14;
+    const tabY = stave.getBottomLineY() + (hasBends ? 34 : 14);
     const tab = new TabStave(x, tabY, w, { num_lines: nStr, space_above_staff_ln: 0.5, space_below_staff_ln: 0 } as never);
     (tab as unknown as { options: { fill_style: string } }).options.fill_style = staffInk;
     if (i === 0) tab.addClef('tab');
+    const repStart = (song.repeats ?? []).some((r) => r.start === bar);
+    const repEnd = (song.repeats ?? []).find((r) => r.end === bar);
+    if (repStart) {
+      stave.setBegBarType(BarlineType.REPEAT_BEGIN);
+      tab.setBegBarType(BarlineType.REPEAT_BEGIN);
+    }
+    if (repEnd) {
+      stave.setEndBarType(BarlineType.REPEAT_END);
+      tab.setEndBarType(BarlineType.REPEAT_END);
+    }
     const sx = Math.max(stave.getNoteStartX(), tab.getNoteStartX());
     stave.setNoteStartX(sx);
     tab.setNoteStartX(sx);
     stave.setContext(ctx).draw();
     tab.setContext(ctx).draw();
     staffTop = stave.getYForLine(0);
+    if (repEnd) repeatLabel(ctx, opts.theme, repEnd.times, x + w, y + 12);
     stringYs = Array.from({ length: nStr }, (_, s) => tab.getYForLine(s));
     bottom = Math.max(bottom, tab.getBottomLineY() + 8);
 
     const beats = part.bars[bar].beats;
     const restKey = bass ? 'd/3' : 'b/4';
     let beatXs: number[] = [];
+    let tabXs: number[] = [];
     if (!beats.length) {
       const r = new StaveNote({ keys: [restKey], duration: 'wr', align_center: true } as never);
       r.setStyle({ fillStyle: staffInk, strokeStyle: staffInk });
@@ -245,13 +261,14 @@ function drawTabRow(
     } else {
       const sNotes: StaveNote[] = [];
       const slots = new Set<StaveNote>();
+      const tabOf = new Map<Beat, TabNote>();
       const tNotes: (TabNote | GhostNote)[] = [];
       for (const b of beats) {
         const d = String(b.dur);
         if (b.rest || !b.notes.length) {
           // a rest, or a tapped rhythm slot still waiting for its notes (drawn as a slash)
           const slot = !b.rest;
-          const r = new StaveNote({ keys: [restKey], duration: d + (slot ? 's' : 'r'), clef: bass ? 'bass' : 'treble', auto_stem: true } as never);
+          const r = new StaveNote({ keys: [restKey], duration: d + (b.dotted ? 'd' : '') + (slot ? 's' : 'r'), clef: bass ? 'bass' : 'treble', auto_stem: true } as never);
           if (b.dotted) Dot.buildAndAttach([r], { all: true });
           if (slot) slots.add(r);
           sNotes.push(r);
@@ -265,7 +282,8 @@ function drawTabRow(
         const keys = pitched.map((p) => pitchKey(p.midi));
         const sn = new StaveNote({
           keys: keys.map((k) => k.key),
-          duration: d,
+          // the dot must be in the duration so notation and tab count the same ticks
+          duration: d + (b.dotted ? 'd' : ''),
           clef: bass ? 'bass' : 'treble',
           auto_stem: true,
         } as never);
@@ -276,6 +294,11 @@ function drawTabRow(
           positions: b.notes.map((n) => ({ str: n.string + 1, fret: displayFret(n.fret, part, opts.capoView) })),
           duration: d + (b.dotted ? 'd' : ''),
         } as never);
+        b.notes.forEach((n, i) => {
+          if (n.bend) tn.addModifier(new Bend(n.bend === 1 ? '1/2' : n.bend === 2 ? 'Full' : '1 1/2') as never, i);
+          if (n.vibrato) tn.addModifier(new Vibrato() as never, i);
+        });
+        tabOf.set(b, tn);
         tNotes.push(tn);
       }
       for (const n of [...sNotes, ...tNotes]) {
@@ -292,11 +315,31 @@ function drawTabRow(
       new Formatter().joinVoices([vs]).joinVoices([vt]).format([vs, vt], Math.max(20, room));
       vs.draw(ctx, stave);
       vt.draw(ctx, tab);
+      // hammer-ons, pull-offs and slides connect to the next note on the same string in this bar
+      beats.forEach((b, bi) => {
+        const from = tabOf.get(b);
+        if (!from) return;
+        b.notes.forEach((n, ni) => {
+          if (!n.legato && !n.slide) return;
+          for (let bj = bi + 1; bj < beats.length; bj++) {
+            const to = tabOf.get(beats[bj]);
+            const li = beats[bj].notes.findIndex((x) => x.string === n.string);
+            if (!to || li < 0) continue;
+            const spec = { first_note: from, last_note: to, first_indices: [ni], last_indices: [li] } as never;
+            const link =
+              n.legato === 'h' ? TabTie.createHammeron(spec) : n.legato === 'p' ? TabTie.createPulloff(spec)
+                : n.slide === 'up' ? TabSlide.createSlideUp(spec) : TabSlide.createSlideDown(spec);
+            link.setContext(ctx).draw();
+            break;
+          }
+        });
+      });
       for (const bm of beams) {
         bm.setStyle({ fillStyle: ink, strokeStyle: ink });
         bm.setContext(ctx).draw();
       }
       beatXs = sNotes.map((n) => n.getAbsoluteX() + 5);
+      tabXs = tNotes.map((n) => n.getAbsoluteX() + 5);
       // chord names above the staff
       ctx.save();
       ctx.setFont(opts.theme.font, 12, 'bold');
@@ -312,7 +355,7 @@ function drawTabRow(
       : beats.length
         ? Math.min(x + w - 14, beatXs[beatXs.length - 1] + 24)
         : sx + 14;
-    bars.push({ bar, x, w, beatXs, appendX });
+    bars.push({ bar, x, w, beatXs, tabXs, appendX });
   });
   ctx.restore();
   return { partId: part.id, kind: 'tab', top: y, bottom, stringYs, staffTop, bars };
@@ -334,8 +377,35 @@ function drawChordRow(
   const lineY = y + 38;
   const cap = barCapacity(song);
   const bars: BarHit[] = [];
+  // "tab out" strip: each chord's fingering written as a mini tab under the chart
+  const showTab = part.chordTab !== false;
+  const nStr = part.tuning.length;
+  const tabTop = lineY + 22;
+  const tabGap = 7;
+  const stripH = showTab ? 22 + (nStr - 1) * tabGap + 6 : 0;
+  const shapeFor = (name: string) => {
+    // "No capo" view shows the real chord's own shape, like the palette does
+    const concertName = opts.capoView === 'concert' && part.capo ? transposeChord(name, part.capo) : name;
+    return findVoicings(concertName, part.tuning)[0] ?? null;
+  };
   ctx.save();
   barXs(sys).forEach(({ bar, x, w }, i) => {
+    if (showTab) {
+      ctx.setStrokeStyle(staffInk);
+      ctx.setLineWidth(0.6);
+      ctx.beginPath();
+      for (let s = 0; s < nStr; s++) {
+        ctx.moveTo(x, tabTop + s * tabGap);
+        ctx.lineTo(x + w, tabTop + s * tabGap);
+      }
+      ctx.moveTo(x + w, tabTop);
+      ctx.lineTo(x + w, tabTop + (nStr - 1) * tabGap);
+      if (i === 0) {
+        ctx.moveTo(x, tabTop);
+        ctx.lineTo(x, tabTop + (nStr - 1) * tabGap);
+      }
+      ctx.stroke();
+    }
     // staff: one line + bar lines
     ctx.setStrokeStyle(staffInk);
     ctx.setLineWidth(1);
@@ -353,6 +423,13 @@ function drawChordRow(
       ctx.setFont(theme.font, 10, 'bold');
       ctx.setFillStyle(staffInk);
       ctx.fillText(`${song.timeSig[0]}/${song.timeSig[1]}`, x + 6, lineY + 4);
+    }
+    const cRepStart = (song.repeats ?? []).some((r) => r.start === bar);
+    const cRepEnd = (song.repeats ?? []).find((r) => r.end === bar);
+    if (cRepStart) repeatSign(ctx, ink, x, lineY, 'start');
+    if (cRepEnd) {
+      repeatSign(ctx, ink, x + w, lineY, 'end');
+      repeatLabel(ctx, theme, cRepEnd.times, x + w, y + 9);
     }
     const inner = x + (bar === 0 ? 36 : 14);
     const innerW = x + w - inner - 12;
@@ -402,6 +479,19 @@ function drawChordRow(
         ctx.setFont(theme.font, 15, 'bold');
         ctx.setFillStyle(chordInk);
         ctx.fillText(displayChord(b.chord, part, opts.capoView), cx - 6, y + 18);
+        const frets = showTab ? shapeFor(b.chord) : null;
+        if (frets) {
+          ctx.setFont(theme.font, 9, 'bold');
+          frets.forEach((f, s) => {
+            const ty = tabTop + s * tabGap;
+            const label = f < 0 ? 'x' : String(f);
+            const tw = label.length * 5.4 + 2;
+            ctx.setFillStyle(theme.bg);
+            ctx.fillRect(cx - 1 - tw / 2 + 2, ty - 4, tw, 8);
+            ctx.setFillStyle(f < 0 ? staffInk : ink);
+            ctx.fillText(label, cx + 2 - tw / 2 + 1, ty + 3);
+          });
+        }
       }
     }
     const full = isBarFull(song, part.bars[bar]) && beats.length > 0;
@@ -409,7 +499,31 @@ function drawChordRow(
     bars.push({ bar, x, w, beatXs, appendX });
   });
   ctx.restore();
-  return { partId: part.id, kind: 'chords', top: y, bottom: y + CHORD_ROW_H, stringYs: [], bars };
+  return { partId: part.id, kind: 'chords', top: y, bottom: y + CHORD_ROW_H + stripH, stringYs: [], bars };
+}
+
+/** Repeat barline for the hand-drawn chord rows: thick + thin line and two dots. */
+function repeatSign(ctx: Ctx, ink: string, x: number, lineY: number, side: 'start' | 'end') {
+  const dir = side === 'start' ? 1 : -1;
+  ctx.save();
+  ctx.setFillStyle(ink);
+  ctx.fillRect(side === 'start' ? x : x - 3, lineY - 11, 3, 22);
+  ctx.fillRect(x + dir * 5 - (side === 'start' ? 0 : 1), lineY - 11, 1, 22);
+  for (const dy of [-4, 4]) {
+    ctx.beginPath();
+    ctx.arc(x + dir * 10, lineY + dy, 1.7, 0, Math.PI * 2, false);
+    ctx.fill();
+  }
+  ctx.restore();
+}
+
+/** "×3" over the end of a repeat. */
+function repeatLabel(ctx: Ctx, theme: Theme, times: number, xEnd: number, y: number) {
+  ctx.save();
+  ctx.setFont(theme.font, 11, 'bold');
+  ctx.setFillStyle(theme.marker);
+  ctx.fillText(`×${times}`, xEnd - 22, y);
+  ctx.restore();
 }
 
 export interface Hit {
