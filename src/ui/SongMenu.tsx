@@ -5,6 +5,7 @@ import type { Song } from '../model/types';
 import { Icon } from './Icon';
 import { navigate } from './router';
 import { toast } from './Toaster';
+import { ShareDialog } from './ShareDialog';
 
 /** A small popover menu anchored to its trigger. Closes on outside click or Escape. */
 export function Menu({ label, icon = 'more', align = 'right', children }: { label: string; icon?: string; align?: 'left' | 'right'; children: (close: () => void) => ReactNode }) {
@@ -52,7 +53,10 @@ export function deleteWithUndo(song: Song) {
 
 /** Everything you can do to a whole song: shared by library rows and the editor. */
 export function SongMenu({ song, inEditor = false }: { song: Song; inEditor?: boolean }) {
+  const [sharing, setSharing] = useState(false);
   return (
+    <>
+    {sharing && <ShareDialog song={song} onClose={() => setSharing(false)} />}
     <Menu label="Song actions">
       {(close) => (
         <>
@@ -75,6 +79,9 @@ export function SongMenu({ song, inEditor = false }: { song: Song; inEditor?: bo
           >
             Duplicate
           </MenuItem>
+          <MenuItem icon="share" onClick={() => (close(), setSharing(true))}>
+            Share link…
+          </MenuItem>
           <MenuItem icon="download" onClick={() => (close(), exportSong(song), toast('Exported JSON'))}>
             Export JSON
           </MenuItem>
@@ -93,5 +100,6 @@ export function SongMenu({ song, inEditor = false }: { song: Song; inEditor?: bo
         </>
       )}
     </Menu>
+    </>
   );
 }

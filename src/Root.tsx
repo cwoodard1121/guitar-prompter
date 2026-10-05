@@ -5,6 +5,7 @@ import { useAccount, useSync } from './storage/useAccount';
 import { loadLocalSongs, onOtherTabChange } from './storage/storage';
 import { Library } from './ui/Library';
 import { Stage } from './ui/Stage';
+import { SharedSong } from './ui/SharedSong';
 import { Icon } from './ui/Icon';
 import { navigate, useRoute } from './ui/router';
 import { Toaster, toast } from './ui/Toaster';
@@ -35,6 +36,7 @@ export function Root() {
 
   let page = <Library />;
   if (route.name === 'song') page = known && openId === songId ? <App key={songId} /> : <div className="page" />;
+  if (route.name === 'share') page = <SharedSong key={route.token} token={route.token} />;
   if (route.name === 'play') {
     const song = library.find((s) => s.id === route.id);
     page = song ? (
