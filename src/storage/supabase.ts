@@ -1,6 +1,8 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { Song } from '../model/types';
 import type { RemoteStore } from './storage';
+import { audioPath, audioType } from './audioPlan';
+import type { AudioRemote } from './audioSync';
 
 const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
@@ -57,6 +59,30 @@ export function supabaseRemote(client: SupabaseClient, userId: string): RemoteSt
         { onConflict: 'owner_id,id' },
       );
       fail(error);
+      // its recording goes too (best effort: a leftover file is harmless and private)
+      await client.storage.from(BUCKET).remove([audioPath(userId, id)]).catch(() => undefined);
+    },
+  };
+}
+
+const BUCKET = 'guitar-audio';
+
+/** Recordings in Supabase Storage, under the user's own folder (RLS-checked). */
+export function supabaseAudio(client: SupabaseClient, userId: string): AudioRemote {
+  const bucket = () => client.storage.from(BUCKET);
+  return {
+    async upload(songId, blob, name) {
+      const { error } = await bucket().upload(audioPath(userId, songId), blob, { upsert: true, contentType: audioType(name, blob.type) });
+      if (error) throw new Error(error.message);
+    },
+    async download(songId) {
+      const { data, error } = await bucket().download(audioPath(userId, songId));
+      if (error || !data) throw new Error(error?.message ?? 'download failed');
+      return data;
+    },
+    async remove(songId) {
+      const { error } = await bucket().remove([audioPath(userId, songId)]);
+      if (error) throw new Error(error.message);
     },
   };
 }

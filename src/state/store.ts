@@ -47,6 +47,8 @@ interface State {
   /** Deletes a song; returns it so the caller can offer Undo via restoreSong. */
   deleteSong: (id: string) => Song | null;
   restoreSong: (song: Song) => void;
+  /** Background change to any song (e.g. "recording uploaded"): saved and synced, but not an undo step. */
+  patchSong: (id: string, fn: (draft: Song) => void) => void;
   replaceLibrary: (songs: Song[]) => void;
 }
 
@@ -196,8 +198,24 @@ export const useStore = create<State>((set, get) => ({
     return copy.id;
   },
 
+  patchSong(id, fn) {
+    const { song, library } = get();
+    const src = song.id === id ? song : library.find((x) => x.id === id);
+    if (!src) return;
+    const draft = clone(src);
+    fn(draft);
+    draft.updatedAt = Date.now();
+    persist(draft);
+    set({
+      ...(song.id === id ? { song: draft } : {}),
+      library: library.map((x) => (x.id === id ? draft : x)),
+    });
+  },
+
   restoreSong(song) {
     const s = { ...song, updatedAt: Date.now() };
+    // its uploaded recording was removed with the delete; the local file goes back up
+    if (s.audio) s.audio = { ...s.audio, uploaded: false };
     restoreLocal(s);
     queueRemoteSave(s);
     set({ library: [s, ...get().library.filter((x) => x.id !== s.id)] });

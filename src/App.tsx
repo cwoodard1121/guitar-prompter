@@ -12,6 +12,7 @@ import { TapPanel } from './ui/TapPanel';
 import { identifyChord } from './model/music';
 import { audioClock, audition, play, type PlayHandle } from './audio/player';
 import { loadTrack, startTrack, stopTrack } from './audio/track';
+import { ensureLocalAudio } from './storage/audioSync';
 import { toast } from './ui/Toaster';
 import type { Bar, Cursor, Dur } from './model/types';
 
@@ -165,10 +166,14 @@ export function App() {
     else startPlayback();
   }, [startPlayback, stopPlayback]);
 
-  // keep the song's recording loaded (it lives in IndexedDB on this device)
+  // keep the song's recording loaded (IndexedDB on this device, fetched from the account if needed)
+  const audioRev = song.audio?.rev;
+  const hasAudio = !!song.audio;
   useEffect(() => {
-    void loadTrack(song.audio ? song.id : null);
-  }, [song.id, song.audio]);
+    const s = useStore.getState().song;
+    if (!hasAudio) return void loadTrack(null);
+    void ensureLocalAudio(s).then((r) => r === 'ready' && loadTrack(s.id, s.audio?.rev));
+  }, [song.id, hasAudio, audioRev]);
 
   // keyboard: arrows move, digits type frets, Space plays, Delete removes
   useEffect(() => {
