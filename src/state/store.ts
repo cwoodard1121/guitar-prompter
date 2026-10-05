@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import type { Cursor, Dur, Song } from '../model/types';
-import { newSong, normalizeCursor, repairSong, type ChordStep } from '../model/song';
+import { cursorNeedsBar, newSong, normalizeCursor, repairSong, type ChordStep } from '../model/song';
 import { deleteLocal, loadLocalSongs, queueRemoteSave, remoteDelete, saveLocal } from '../storage/storage';
 
 export type CapoView = 'shapes' | 'concert';
@@ -20,12 +20,15 @@ interface State {
   future: Song[];
   /** Beat index per part currently sounding during playback (null = stopped). */
   playhead: Record<string, { bar: number; beat: number }> | null;
+  /** Tap-rhythm panel open (its keys take over the keyboard). */
+  tapping: boolean;
+  tapOpen: boolean;
 
   edit: (fn: (draft: Song, cursor: Cursor) => Cursor | void) => void;
   setCursor: (c: Partial<Cursor>) => void;
   undo: () => void;
   redo: () => void;
-  set: (p: Partial<Pick<State, 'dur' | 'dotted' | 'stack' | 'chordStep' | 'capoView' | 'focusOnly' | 'playhead'>>) => void;
+  set: (p: Partial<Pick<State, 'dur' | 'dotted' | 'stack' | 'chordStep' | 'capoView' | 'focusOnly' | 'playhead' | 'tapping' | 'tapOpen'>>) => void;
   openSong: (id: string) => void;
   createSong: () => void;
   importSong: (song: Song) => void;
@@ -83,6 +86,8 @@ export const useStore = create<State>((set, get) => ({
   past: [],
   future: [],
   playhead: null,
+  tapping: false,
+  tapOpen: false,
 
   edit(fn) {
     const { song, cursor, past, library } = get();
@@ -102,7 +107,10 @@ export const useStore = create<State>((set, get) => ({
 
   setCursor(c) {
     const { song, cursor } = get();
-    set({ cursor: normalizeCursor(song, { ...cursor, ...c }) });
+    const next = { ...cursor, ...c };
+    // Walking past the last full bar adds a bar â€” that's an edit, so it goes through history.
+    if (cursorNeedsBar(song, next)) return get().edit(() => next);
+    set({ cursor: normalizeCursor(song, next, false) });
   },
 
   undo() {
@@ -115,7 +123,7 @@ export const useStore = create<State>((set, get) => ({
       song: restored,
       past: past.slice(0, -1),
       future: [song, ...future],
-      cursor: normalizeCursor(clone(restored), cursor),
+      cursor: normalizeCursor(restored, cursor, false),
       library: library.map((s) => (s.id === restored.id ? restored : s)),
     });
   },
@@ -130,7 +138,7 @@ export const useStore = create<State>((set, get) => ({
       song: restored,
       past: [...past, song],
       future: future.slice(1),
-      cursor: normalizeCursor(clone(restored), cursor),
+      cursor: normalizeCursor(restored, cursor, false),
       library: library.map((s) => (s.id === restored.id ? restored : s)),
     });
   },

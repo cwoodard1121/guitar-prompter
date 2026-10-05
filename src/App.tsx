@@ -6,14 +6,23 @@ import { PartsRail } from './ui/PartsRail';
 import { ScoreView } from './ui/ScoreView';
 import { Fretboard } from './ui/Fretboard';
 import { ChordPalette } from './ui/ChordPalette';
-import { barCount, deleteAtCursor, placeChordName, placeChordShape, placeNote, setRest, usedChords } from './model/song';
+import { addBarsAtEnd, barCapacity, barCount, deleteAtCursor, placeChordName, placeChordShape, placeNote, setRest, usedChords } from './model/song';
+import { carryChords, isSlot, onsetsToBars } from './model/rhythm';
+import { TapPanel } from './ui/TapPanel';
 import { identifyChord } from './model/music';
 import { audition, play, type PlayHandle } from './audio/player';
 import { connectRemote } from './storage/storage';
 import { artifactRemote } from './storage/artifactRemote';
-import type { Dur } from './model/types';
+import type { Bar, Cursor, Dur } from './model/types';
 
 const DURS: Dur[] = [1, 2, 4, 8, 16, 32];
+
+/** The beat just before a cursor position (crossing back over a bar line). */
+function prevBeat(bars: Bar[], c: Cursor): Cursor {
+  if (c.beat > 0) return { ...c, beat: c.beat - 1 };
+  if (c.bar > 0) return { ...c, bar: c.bar - 1, beat: Math.max(0, bars[c.bar - 1].beats.length - 1) };
+  return c;
+}
 
 export function App() {
   const song = useStore((s) => s.song);
@@ -24,6 +33,7 @@ export function App() {
   const stack = useStore((s) => s.stack);
   const chordStep = useStore((s) => s.chordStep);
   const capoView = useStore((s) => s.capoView);
+  const tapOpen = useStore((s) => s.tapOpen);
   const { edit, set, setCursor, undo, redo, replaceLibrary } = useStore.getState();
 
   const [preview, setPreview] = useState<number[] | null>(null);
@@ -32,7 +42,7 @@ export function App() {
   const [metronome, setMetronome] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const handle = useRef<PlayHandle | null>(null);
-  const keyBuf = useRef<{ digits: string; at: number; beat: string } | null>(null);
+  const keyBuf = useRef<{ digits: string; at: number; at2: Cursor } | null>(null);
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const toast = useCallback((m: string) => {
@@ -112,6 +122,27 @@ export function App() {
     }
   };
 
+  /** Writes tapped onsets into the focused part as empty rhythm slots, then parks the cursor on the first one. */
+  const commitRhythm = (onsets: number[], startBar: number, bars: number) => {
+    edit((d, c) => {
+      const p = d.parts.find((x) => x.id === c.partId)!;
+      const need = startBar + bars - barCount(d);
+      if (need > 0) addBarsAtEnd(d, need);
+      const fresh = onsetsToBars(onsets, barCapacity(d), bars);
+      fresh.forEach((b, i) => {
+        carryChords(p.bars[startBar + i], b);
+        p.bars[startBar + i] = b;
+      });
+      for (let i = 0; i < bars; i++) {
+        const k = p.bars[startBar + i].beats.findIndex(isSlot);
+        if (k >= 0) return { ...c, bar: startBar + i, beat: k };
+      }
+      return { ...c, bar: startBar, beat: 0 };
+    });
+    set({ tapOpen: false, stack: false });
+    toast(`${onsets.length} notes tapped. Now tap frets to fill them in order.`);
+  };
+
   const togglePlay = useCallback(() => {
     if (handle.current) {
       handle.current.stop();
@@ -141,6 +172,7 @@ export function App() {
       const t = e.target as HTMLElement;
       if (t.closest('input, select, textarea, [contenteditable]')) return;
       const st = useStore.getState();
+      if (st.tapping) return; // the tap panel owns the keyboard while open
       const c = st.cursor;
       const p = focusedPart(st);
       const mod = e.ctrlKey || e.metaKey;
@@ -217,16 +249,34 @@ export function App() {
         }
       }
       if (/^[0-9]$/.test(e.key) && p.kind === 'tab') {
+        // Typed frets behave like fretboard taps: write and move on (unless Stack is on).
+        // A second digit within 700 ms rewrites the note just typed (1 then 2 → 12).
         e.preventDefault();
         const now = performance.now();
-        const here = `${c.bar}:${c.beat}:${c.string}`;
-        let digits = e.key;
         const kb = keyBuf.current;
-        if (kb && kb.beat === here && now - kb.at < 800 && Number(kb.digits + e.key) <= 24) digits = kb.digits + e.key;
-        keyBuf.current = { digits, at: now, beat: here };
-        const fret = Number(digits);
+        const entry = { dur: st.dur, dotted: st.dotted, stack: st.stack };
+        if (kb && now - kb.at < 700 && Number(kb.digits + e.key) <= 24) {
+          const fret = Number(kb.digits + e.key);
+          keyBuf.current = null;
+          audition([p.tuning[kb.at2.string] + p.capo + fret]);
+          st.edit((s) => {
+            const back = placeNote(s, kb.at2, kb.at2.string, fret, { ...entry, stack: true });
+            return entry.stack ? back : { ...back, beat: back.beat + 1 };
+          });
+          return;
+        }
+        const fret = Number(e.key);
         audition([p.tuning[c.string] + p.capo + fret]);
-        st.edit((s, cc) => placeNote(s, cc, cc.string, fret, { dur: st.dur, dotted: st.dotted, stack: true }));
+        let placedAt = c;
+        st.edit((s, cc) => {
+          const after = placeNote(s, cc, cc.string, fret, entry);
+          // where the note actually landed (the cursor may have spilled into the next bar)
+          const part = s.parts.find((x) => x.id === cc.partId)!;
+          const landed = entry.stack ? after : prevBeat(part.bars, after);
+          placedAt = { ...landed, string: cc.string };
+          return after;
+        });
+        keyBuf.current = { digits: e.key, at: now, at2: placedAt };
       }
     };
     window.addEventListener('keydown', onKey);
@@ -257,6 +307,9 @@ export function App() {
             </span>
             {part.capo > 0 && <span className="dock-capo">{concert ? `No capo · showing real frets` : `Capo ${part.capo}`}</span>}
           </div>
+          {tapOpen ? (
+            <TapPanel onCommit={commitRhythm} onClose={() => set({ tapOpen: false })} />
+          ) : (
           <Fretboard
             part={part}
             lit={lit}
@@ -266,6 +319,7 @@ export function App() {
             onPick={pick}
             onString={(s) => setCursor({ string: s })}
           />
+          )}
         </div>
         <ChordPalette
           part={part}

@@ -326,3 +326,31 @@ select {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ------------------------------------------------------------ tap rhythm */
+.tool-accent { color: var(--amber); }
+.tool-accent:hover:not(:disabled) { color: var(--amber); }
+.tap-panel { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 14px; align-items: stretch; min-height: 150px; }
+.tap-settings { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.tap-title { display: grid; gap: 2px; }
+.tap-title strong { font-size: 14px; }
+.tap-title span { color: var(--pearl-3); font-size: 12px; }
+.tap-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.tap-row .pal-key { padding-top: 0; }
+.tap-hint { color: var(--pearl-3); font-size: 11px; }
+.tap-pad {
+  position: relative; overflow: hidden; display: grid; place-content: center; gap: 2px;
+  border-radius: 12px; border: 1px solid var(--nickel-hi);
+  background: radial-gradient(120% 120% at 30% 20%, var(--wood-3), var(--wood-0));
+  color: var(--pearl); user-select: none; touch-action: manipulation;
+}
+.tap-pad.is-count { border-color: var(--amber); }
+.tap-pad.is-live { border-color: var(--abalone); box-shadow: inset 0 0 0 1px var(--abalone); }
+.tap-big { font-size: 30px; font-weight: 800; letter-spacing: 0.04em; }
+.tap-sub { font-size: 11px; color: var(--pearl-3); }
+.tap-ring {
+  position: absolute; inset: 50% auto auto 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px;
+  border-radius: 50%; border: 2px solid var(--abalone); opacity: 0; pointer-events: none;
+  animation: ring 0.45s var(--ease);
+}
+@keyframes ring { from { transform: scale(0.6); opacity: 0.9; } to { transform: scale(5); opacity: 0; } }

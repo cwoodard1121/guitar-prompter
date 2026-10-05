@@ -244,12 +244,16 @@ function drawTabRow(
       v.draw(ctx, stave);
     } else {
       const sNotes: StaveNote[] = [];
+      const slots = new Set<StaveNote>();
       const tNotes: (TabNote | GhostNote)[] = [];
       for (const b of beats) {
         const d = String(b.dur);
         if (b.rest || !b.notes.length) {
-          const r = new StaveNote({ keys: [restKey], duration: d + 'r', clef: bass ? 'bass' : 'treble' } as never);
+          // a rest, or a tapped rhythm slot still waiting for its notes (drawn as a slash)
+          const slot = !b.rest;
+          const r = new StaveNote({ keys: [restKey], duration: d + (slot ? 's' : 'r'), clef: bass ? 'bass' : 'treble', auto_stem: true } as never);
           if (b.dotted) Dot.buildAndAttach([r], { all: true });
+          if (slot) slots.add(r);
           sNotes.push(r);
           const g = new GhostNote({ duration: d + (b.dotted ? 'd' : '') } as never);
           tNotes.push(g);
@@ -274,7 +278,10 @@ function drawTabRow(
         } as never);
         tNotes.push(tn);
       }
-      for (const n of [...sNotes, ...tNotes]) n.setStyle({ fillStyle: ink, strokeStyle: ink });
+      for (const n of [...sNotes, ...tNotes]) {
+        const c = slots.has(n as StaveNote) ? chordInk : ink;
+        n.setStyle({ fillStyle: c, strokeStyle: c });
+      }
       const beams = Beam.generateBeams(sNotes.filter((n) => !n.isRest()) as never);
       const vs = new Voice({ num_beats: song.timeSig[0], beat_value: song.timeSig[1] }).setMode(Voice.Mode.SOFT);
       vs.addTickables(sNotes);

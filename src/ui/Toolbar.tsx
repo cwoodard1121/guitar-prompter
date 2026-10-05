@@ -55,6 +55,12 @@ export function Toolbar() {
         </button>
       </div>
 
+      <div className="tgroup">
+        <button className="tool tool-text tool-accent" onClick={() => set({ tapOpen: !useStore.getState().tapOpen })} title="Tap the rhythm first, fill in notes after">
+          <Icon name="tap" size={14} /> Tap rhythm
+        </button>
+      </div>
+
       {part.kind === 'tab' && (
         <div className="tgroup">
           <button className={'tool tool-text' + (stack ? ' on' : '')} aria-pressed={stack} onClick={() => set({ stack: !stack })} title="Stack notes on one beat to build a chord">

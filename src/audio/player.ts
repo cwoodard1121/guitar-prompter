@@ -44,6 +44,12 @@ function pluck(ctx: AudioContext, midi: number): AudioBuffer {
 
 export interface PlayHandle {
   stop(): void;
+  /** AudioContext time of the first downbeat (after any count-in). */
+  t0: number;
+  /** Seconds per tick at the song tempo. */
+  spt: number;
+  /** Current audio time minus output latency: when the listener actually hears "now". */
+  heardNow(): number;
 }
 
 interface Ev {
@@ -60,7 +66,7 @@ interface Ev {
 export function play(
   song: Song,
   fromBar: number,
-  opts: { metronome: boolean; loopBars?: [number, number] },
+  opts: { metronome: boolean; countIn?: boolean; bars?: number },
   onBeat: (pos: Record<string, { bar: number; beat: number }>) => void,
   onEnd: () => void,
 ): PlayHandle {
@@ -70,16 +76,19 @@ export function play(
   master.connect(ctx.destination);
   const spt = 60 / song.tempo / 16; // seconds per tick (quarter = 16)
   const cap = barCapacity(song);
-  const t0 = ctx.currentTime + 0.12;
-  const nBars = song.parts[0]?.bars.length ?? 0;
+  const countInSec = opts.countIn ? cap * spt : 0;
+  const t0 = ctx.currentTime + 0.12 + countInSec;
+  const songBars = song.parts[0]?.bars.length ?? 0;
+  const nBars = Math.max(songBars, opts.bars ? fromBar + opts.bars : 0);
   const timeline: { t: number; partId: string; bar: number; beat: number }[] = [];
+  const ticks: number[] = [];
   const events: Ev[] = [];
 
   for (const part of song.parts) {
     let chord: string | undefined;
     // carry the chord in effect before the start bar
     for (let b = 0; b < fromBar; b++) for (const bt of part.bars[b].beats) if (bt.chord) chord = bt.chord;
-    for (let b = fromBar; b < nBars; b++) {
+    for (let b = fromBar; b < songBars && b < nBars; b++) {
       let tick = (b - fromBar) * cap;
       part.bars[b].beats.forEach((beat, bi) => {
         const time = t0 + tick * spt;
@@ -88,6 +97,10 @@ export function play(
         if (beat.chord) chord = beat.chord;
         tick += beatTicks(beat);
         if (part.muted || beat.rest) return;
+        if (part.kind === 'tab' && !beat.notes.length) {
+          ticks.push(time); // tapped slot with no notes yet: a muted "chk" so the rhythm is audible
+          return;
+        }
         if (part.kind === 'tab' && beat.notes.length) {
           events.push({
             time,
@@ -126,10 +139,25 @@ export function play(
     });
   }
 
+  const chk = ctx.createBuffer(1, Math.floor(ctx.sampleRate * 0.05), ctx.sampleRate);
+  const cd = chk.getChannelData(0);
+  for (let i = 0; i < cd.length; i++) cd[i] = (Math.random() * 2 - 1) * Math.exp(-i / (ctx.sampleRate * 0.008));
+  for (const at of ticks) {
+    const src = ctx.createBufferSource();
+    src.buffer = chk;
+    const g = ctx.createGain();
+    g.gain.value = 0.35;
+    src.connect(g).connect(master);
+    src.start(at);
+    sources.push(src);
+  }
+
   const total = (nBars - fromBar) * cap * spt;
-  if (opts.metronome) {
+  if (opts.metronome || opts.countIn) {
     const step = 64 / song.timeSig[1];
-    for (let t = 0, k = 0; t < (nBars - fromBar) * cap; t += step, k++) {
+    const startTick = opts.countIn ? -cap : 0;
+    const endTick = opts.metronome ? (nBars - fromBar) * cap : 0;
+    for (let t = startTick, k = 0; t < endTick; t += step, k++) {
       const o = ctx.createOscillator();
       const g = ctx.createGain();
       const at = t0 + t * spt;
@@ -186,7 +214,7 @@ export function play(
       master.disconnect();
     }, 150);
   }
-  return { stop };
+  return { stop, t0, spt, heardNow: () => ctx.currentTime - (ctx.outputLatency || 0) };
 }
 
 /** Plays a single pitch or chord immediately (fretboard / palette feedback). */

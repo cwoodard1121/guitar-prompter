@@ -22,6 +22,8 @@ const P: Record<string, string> = {
   bar: 'M5 4v16M19 4v16M9 12h6M12 9v6',
   flag: 'M6 21V4h10l-2 4 2 4H6',
   layers: 'm12 4 9 5-9 5-9-5zM3 14l9 5 9-5',
+  tap: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0v3.5a6 6 0 0 1-6 6h-.6a5 5 0 0 1-4-2L4.5 14a1.6 1.6 0 0 1 2.4-2L9 14M4 4.5 6 6M15 4.5 13 6',
+  minus: 'M5 12h14',
 };
 
 export function Icon({ name, size = 16 }: { name: keyof typeof P | string; size?: number }) {

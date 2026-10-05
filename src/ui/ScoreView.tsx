@@ -31,6 +31,10 @@ export function ScoreView() {
   useEffect(() => {
     const el = wrap.current;
     if (!el) return;
+    // Measure once now (ResizeObserver doesn't fire in background tabs), then follow resizes.
+    const cs = getComputedStyle(el);
+    const initial = Math.floor(el.clientWidth - parseFloat(cs.paddingLeft) - parseFloat(cs.paddingRight));
+    if (initial > 0) setWidth(initial);
     // Only re-layout on real width changes; tiny jitters (scrollbars appearing) would loop.
     const ro = new ResizeObserver(([e]) => {
       const w = Math.floor(e.contentRect.width);

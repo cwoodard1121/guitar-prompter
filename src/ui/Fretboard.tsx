@@ -34,6 +34,7 @@ export function Fretboard({ part, lit, preview, activeString, showConcert, onPic
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
+    if (el.clientWidth > 0) setW(Math.max(420, el.clientWidth));
     const ro = new ResizeObserver(([e]) => {
       const nw = Math.max(420, Math.floor(e.contentRect.width));
       setW((prev) => (Math.abs(prev - nw) > 4 ? nw : prev));
@@ -70,6 +71,12 @@ export function Fretboard({ part, lit, preview, activeString, showConcert, onPic
   }
 
   const fretLabel = (rel: number) => String(showConcert ? rel + capo : rel);
+  /** In "No capo" view the neck is drawn without a capo and frets are real frets. */
+  const drawCapo = showConcert ? 0 : capo;
+  /** x for a stored (capo-relative) fret. With the capo on, "open" is drawn in the open zone. */
+  const relX = (rel: number) => (!showConcert && rel === 0 && capo > 0 ? cx(0) : cx(rel + capo));
+  /** x for a preview voicing: capo-relative shape normally, absolute frets in "No capo" view. */
+  const previewX = (f: number) => (showConcert ? cx(f) : relX(f));
 
   return (
     <div className="fretboard" ref={ref}>
@@ -88,6 +95,12 @@ export function Fretboard({ part, lit, preview, activeString, showConcert, onPic
           if (!p) return;
           if (p.abs === null) {
             onString(p.s);
+            return;
+          }
+          if (showConcert) {
+            // real frets; below the capo can't be written while the part has a capo
+            if (p.abs - capo < 0) return;
+            onPick(p.s, p.abs - capo);
             return;
           }
           // below the capo is unreachable; the open zone means "open at the capo"
@@ -125,11 +138,11 @@ export function Fretboard({ part, lit, preview, activeString, showConcert, onPic
           ),
         )}
         {/* below-capo shade + capo */}
-        {capo > 0 && (
+        {drawCapo > 0 && (
           <>
-            <rect x={LABEL_W} y={top - 9} width={xs[capo] - LABEL_W - 6} height={rowH * (n - 1) + 18} fill="#15100d" opacity="0.62" />
-            <rect x={xs[capo] - 11} y={top - 13} width="9" height={rowH * (n - 1) + 26} rx="4" fill="#1b1b1d" stroke="#5c5f66" />
-            <text x={xs[capo] - 6.5} y={h - 1} textAnchor="middle" className="fb-capo">CAPO {capo}</text>
+            <rect x={LABEL_W} y={top - 9} width={xs[drawCapo] - LABEL_W - 6} height={rowH * (n - 1) + 18} fill="#15100d" opacity="0.62" />
+            <rect x={xs[drawCapo] - 11} y={top - 13} width="9" height={rowH * (n - 1) + 26} rx="4" fill="#1b1b1d" stroke="#5c5f66" />
+            <text x={xs[drawCapo] - 6.5} y={h - 1} textAnchor="middle" className="fb-capo">CAPO {drawCapo}</text>
           </>
         )}
         {/* strings */}
@@ -167,22 +180,22 @@ export function Fretboard({ part, lit, preview, activeString, showConcert, onPic
               ×
             </text>
           ) : (
-            <circle key={'p' + s} cx={cx(rel + capo === capo && capo > 0 ? 0 : rel + capo)} cy={sy(s)} r="7.5" className="fb-ring" />
+            <circle key={'p' + s} cx={previewX(rel)} cy={sy(s)} r="7.5" className="fb-ring" />
           ),
         )}
         {/* hover ghost */}
-        {hover && hover.abs >= capo && !lit.has(hover.s) && (
+        {hover && (showConcert ? hover.abs >= capo || hover.abs === 0 && capo === 0 : hover.abs >= capo || hover.abs === 0) && !lit.has(hover.s) && (
           <g className="fb-ghost">
-            <circle cx={cx(hover.abs === 0 ? 0 : hover.abs)} cy={sy(hover.s)} r="8" />
-            <text x={cx(hover.abs === 0 ? 0 : hover.abs)} y={sy(hover.s) + 3.5} textAnchor="middle">
-              {fretLabel(Math.max(0, hover.abs - capo))}
+            <circle cx={cx(hover.abs)} cy={sy(hover.s)} r="8" />
+            <text x={cx(hover.abs)} y={sy(hover.s) + 3.5} textAnchor="middle">
+              {showConcert ? hover.abs : Math.max(0, hover.abs - capo)}
             </text>
           </g>
         )}
         {/* lit notes */}
         {[...lit.entries()].map(([s, rel]) => {
           const abs = rel + capo;
-          const x = cx(rel === 0 && capo > 0 ? 0 : abs);
+          const x = relX(rel);
           return (
             <g key={'n' + s} className="fb-note">
               <circle cx={x} cy={sy(s)} r="8.5" fill="url(#pearl)" />

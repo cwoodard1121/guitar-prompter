@@ -5,4 +5,5 @@ if not exist node_modules (
   echo Installing dependencies...
   call npm install
 )
-call npx vite --port 5179 --open
+rem --strictPort: songs are saved per address, so always use the same port
+call npx vite --port 5179 --strictPort --open

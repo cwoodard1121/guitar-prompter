@@ -40,12 +40,17 @@ export function ChordPalette(p: Props) {
   const shapeName = concert && part.capo ? transposeChord(shown, -part.capo) : shown;
   const voicings = useMemo(() => findVoicings(shapeName, part.tuning), [shapeName, part.tuning]);
   const frets = voicings[Math.min(vi, voicings.length - 1)] ?? null;
+  // Without the capo you play the concert chord's own shape (capo 2 + G → an A shape).
+  const concertVoicings = useMemo(() => findVoicings(shown, part.tuning), [shown, part.tuning]);
+  const showConcertShape = concert && part.capo > 0;
+  const viewVoicings = showConcertShape ? concertVoicings : voicings;
+  const viewFrets = viewVoicings[Math.min(vi, viewVoicings.length - 1)] ?? null;
 
   useEffect(() => setVi(0), [shapeName]);
   useEffect(() => {
-    p.onPreview(frets);
+    p.onPreview(viewFrets);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [frets?.join(',')]);
+  }, [viewFrets?.join(',')]);
 
   const disp = (name: string) => (concert && part.capo ? transposeChord(name, part.capo) : name);
   const tab = part.kind === 'tab';
@@ -136,18 +141,18 @@ export function ChordPalette(p: Props) {
         <div className="pick">
           <div className="pick-name" onClick={() => hear(frets)} title="Listen">
             {shown}
-            {concert && part.capo > 0 && shapeName !== shown && <small>shape {shapeName}</small>}
+            {showConcertShape && <small>no capo · capo {part.capo} shape {shapeName}</small>}
           </div>
-          {frets ? <ChordDiagram frets={frets} /> : <div className="pick-none">No shape</div>}
-          {voicings.length > 1 && (
+          {viewFrets ? <ChordDiagram frets={viewFrets} /> : <div className="pick-none">No shape</div>}
+          {viewVoicings.length > 1 && (
             <div className="voicings">
-              <button className="icon-btn" onClick={() => setVi((vi + voicings.length - 1) % voicings.length)} aria-label="Previous voicing">
+              <button className="icon-btn" onClick={() => setVi((vi + viewVoicings.length - 1) % viewVoicings.length)} aria-label="Previous voicing">
                 <Icon name="left" size={14} />
               </button>
               <span>
-                {vi + 1}/{voicings.length}
+                {vi + 1}/{viewVoicings.length}
               </span>
-              <button className="icon-btn" onClick={() => setVi((vi + 1) % voicings.length)} aria-label="Next voicing">
+              <button className="icon-btn" onClick={() => setVi((vi + 1) % viewVoicings.length)} aria-label="Next voicing">
                 <Icon name="right" size={14} />
               </button>
             </div>

@@ -100,14 +100,29 @@ export function isBarFull(song: Song, bar: Bar) {
   return barTicks(bar) >= barCapacity(song);
 }
 
-/** Keeps the cursor on a real position, growing the song when it walks off the end. */
-export function normalizeCursor(song: Song, c: Cursor): Cursor {
+/** True when the cursor sits past a full last bar, i.e. moving there needs a new bar. */
+export function cursorNeedsBar(song: Song, c: Cursor): boolean {
+  const part = partOf(song, c.partId) ?? song.parts[0];
+  const bar = Math.max(0, Math.min(c.bar, barCount(song) - 1));
+  const b = part.bars[bar];
+  return bar === barCount(song) - 1 && c.beat >= b.beats.length && b.beats.length > 0 && isBarFull(song, b);
+}
+
+/**
+ * Keeps the cursor on a real position. With `grow` (only ever inside an edit,
+ * on a draft) it adds a bar when the cursor walks off the end; without it, it
+ * only clamps and never touches the song.
+ */
+export function normalizeCursor(song: Song, c: Cursor, grow = true): Cursor {
   const part = partOf(song, c.partId) ?? song.parts[0];
   let { bar, beat } = c;
   bar = Math.max(0, Math.min(bar, barCount(song) - 1));
   const b = part.bars[bar];
   if (beat >= b.beats.length && isBarFull(song, b) && b.beats.length > 0) {
-    if (bar === barCount(song) - 1) addBarsAtEnd(song);
+    if (bar === barCount(song) - 1) {
+      if (!grow) return { partId: part.id, bar, beat: b.beats.length - 1, string: Math.max(0, Math.min(c.string, part.tuning.length - 1)) };
+      addBarsAtEnd(song);
+    }
     bar += 1;
     beat = 0;
   }
@@ -141,6 +156,34 @@ function beatAtCursor(song: Song, c: Cursor, opts: EntryOpts): { beat: Beat; cur
 
 const advance = (song: Song, c: Cursor) => normalizeCursor(song, { ...c, beat: c.beat + 1 });
 
+/** Next tapped-but-empty rhythm slot after the cursor (same part), if any within reach. */
+export function nextSlot(song: Song, c: Cursor): Cursor | null {
+  const part = partOf(song, c.partId);
+  let bar = c.bar;
+  let beat = c.beat + 1;
+  for (let guard = 0; guard < 512 && bar < part.bars.length; guard++) {
+    const beats = part.bars[bar].beats;
+    if (beat >= beats.length) {
+      bar++;
+      beat = 0;
+      continue;
+    }
+    const b = beats[beat];
+    if (!b.rest && !b.notes.length) return { ...c, bar, beat };
+    beat++;
+  }
+  return null;
+}
+
+/** After filling a beat: jump to the next empty slot when filling a tapped rhythm, else step one beat. */
+function advanceAfterFill(song: Song, c: Cursor, wasSlot: boolean): Cursor {
+  if (wasSlot) {
+    const n = nextSlot(song, c);
+    if (n) return n;
+  }
+  return advance(song, c);
+}
+
 /** Names a tab beat from its notes when it is a chord (3+ notes, or a power chord), unless the user named it. */
 export function autoName(part: Part, beat: Beat) {
   if (beat.chord && !beat.chordAuto) return;
@@ -158,8 +201,10 @@ export function autoName(part: Part, beat: Beat) {
 
 /** Puts a note on a string at the cursor. Tapping the same fret again removes it. */
 export function placeNote(song: Song, c: Cursor, string: number, fret: number, opts: EntryOpts): Cursor {
-  const { beat, cursor } = beatAtCursor(song, c, opts);
   const part = partOf(song, c.partId);
+  const before = part.bars[c.bar].beats[c.beat];
+  const wasSlot = !!before && !before.rest && before.notes.length === 0;
+  const { beat, cursor } = beatAtCursor(song, c, opts);
   const existing = beat.notes.find((n) => n.string === string);
   if (existing && existing.fret === fret && opts.stack) {
     beat.notes = beat.notes.filter((n) => n !== existing);
@@ -172,11 +217,15 @@ export function placeNote(song: Song, c: Cursor, string: number, fret: number, o
   beat.notes.sort((a, b) => a.string - b.string);
   autoName(part, beat);
   const at = { ...cursor, string };
-  return opts.stack ? at : advance(song, at);
+  return opts.stack ? at : advanceAfterFill(song, at, wasSlot);
 }
 
 /** Writes a whole chord shape onto the cursor beat (tab parts) and names it. */
 export function placeChordShape(song: Song, c: Cursor, name: string, frets: number[], opts: EntryOpts): Cursor {
+  const wasSlot = (() => {
+    const b = partOf(song, c.partId).bars[c.bar].beats[c.beat];
+    return !!b && !b.rest && !b.notes.length;
+  })();
   const { beat, cursor } = beatAtCursor(song, c, opts);
   const notes: Note[] = [];
   frets.forEach((f, s) => f >= 0 && notes.push({ string: s, fret: f }));
@@ -184,7 +233,7 @@ export function placeChordShape(song: Song, c: Cursor, name: string, frets: numb
   beat.rest = false;
   beat.chord = name;
   beat.chordAuto = undefined;
-  return opts.stack ? cursor : advance(song, cursor);
+  return opts.stack ? cursor : advanceAfterFill(song, cursor, wasSlot);
 }
 
 export type ChordStep = 'beat' | 'half' | 'bar';
