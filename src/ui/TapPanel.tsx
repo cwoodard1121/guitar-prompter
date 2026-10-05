@@ -40,6 +40,43 @@ export function TapPanel({ onCommit, onClose }: Props) {
   const [held, setHeld] = useState(false);
   const timer = useRef<number>(0);
   const startBar = cursor.bar;
+  const listen = useRef<PlayHandle | null>(null);
+  const [listening, setListening] = useState(false);
+
+  /** Loops the bars you're about to tap (no recording), to learn the rhythm first. */
+  const stopListen = () => {
+    if (!listen.current) return;
+    listen.current.stop();
+    listen.current = null;
+    stopTrack();
+    set({ playhead: null });
+    setListening(false);
+  };
+  const startListen = () => {
+    const st = useStore.getState();
+    const go = () => {
+      const h = play(st.song, startBar, { metronome: metro, bars, speed: st.speed, synth: st.synthOn }, (pos) => set({ playhead: pos }), () => {
+        if (listen.current === h) go();
+      });
+      listen.current = h;
+      startTrack(st.song, startBar, h, audioClock(), st.speed);
+    };
+    go();
+    setListening(true);
+  };
+  const moveStart = (by: number) => {
+    stopListen();
+    useStore.getState().setCursor({ bar: Math.max(0, startBar + by), beat: 0 });
+  };
+  useEffect(
+    () => () => {
+      if (!listen.current) return;
+      listen.current.stop();
+      stopTrack();
+      useStore.getState().set({ playhead: null });
+    },
+    [],
+  );
 
   const finish = (save: boolean) => {
     const h = handle.current;
@@ -59,6 +96,7 @@ export function TapPanel({ onCommit, onClose }: Props) {
   };
 
   const start = () => {
+    stopListen();
     taps.current = [];
     setCount(0);
     // the part being recorded stays silent; others play along if wanted
@@ -186,7 +224,23 @@ export function TapPanel({ onCommit, onClose }: Props) {
               <Icon name="play" size={12} /> Count in &amp; record
             </button>
           )}
-          <button className="btn btn-ghost" onClick={() => (handle.current ? finish(false) : onClose())}>
+          {!recording && (
+            <>
+              <button className={'btn' + (listening ? ' on' : '')} onClick={listening ? stopListen : startListen} aria-pressed={listening} title={`Loop bar${bars > 1 ? 's' : ''} ${startBar + 1}${bars > 1 ? `–${startBar + bars}` : ''} to learn the rhythm`}>
+                <Icon name={listening ? 'stop' : 'loop'} size={12} /> {listening ? 'Stop' : 'Listen'}
+              </button>
+              <span className="tap-from" role="group" aria-label="Start bar">
+                <button className="icon-btn" onClick={() => moveStart(-1)} disabled={startBar === 0} aria-label="Start a bar earlier">
+                  <Icon name="left" size={13} />
+                </button>
+                <span>Bar {startBar + 1}</span>
+                <button className="icon-btn" onClick={() => moveStart(1)} aria-label="Start a bar later">
+                  <Icon name="right" size={13} />
+                </button>
+              </span>
+            </>
+          )}
+          <button className="btn btn-ghost" onClick={() => (stopListen(), handle.current ? finish(false) : onClose())}>
             {recording ? 'Cancel' : 'Done'}
           </button>
           <span className="tap-hint">Tap or hold (hold = longer note) · Space or any letter works too · move off the pad or Esc to finish</span>

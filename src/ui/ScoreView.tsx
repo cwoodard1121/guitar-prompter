@@ -64,9 +64,23 @@ export function ScoreView() {
   }, [song, width, cursor.partId, focusOnly, capoView]);
 
   // keep the caret in view while typing / tapping
+  const head = useRef<HTMLDivElement>(null);
+  const lastCaret = useRef({ key: '', at: 0 });
   useEffect(() => {
+    const key = `${cursor.partId}:${cursor.bar}:${cursor.beat}:${cursor.string}`;
+    const moved = key !== lastCaret.current.key;
+    if (moved) lastCaret.current = { key, at: performance.now() };
+    // while playing, a redraw (a chord tapped live) mustn't yank the view back to the caret
+    if (!moved && useStore.getState().playhead) return;
     caret.current?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
   }, [cursor, layout]);
+
+  // follow the music, unless you've just moved the caret to work on something
+  const followBar = playhead ? (playhead[cursor.partId] ?? Object.values(playhead)[0])?.bar : undefined;
+  useEffect(() => {
+    if (followBar === undefined || performance.now() - lastCaret.current.at < 4000) return;
+    head.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  }, [followBar, layout]);
 
   const find = (partId: string, bar: number) => {
     for (const sys of layout?.systems ?? []) {
@@ -123,6 +137,7 @@ export function ScoreView() {
             return (
               <div
                 key={pid}
+                ref={pid === (playhead[cursor.partId] ? cursor.partId : Object.keys(playhead)[0]) ? head : undefined}
                 className="playhead"
                 style={{ left: f.bh.beatXs[pos.beat] - 10, top: f.row.top - 2, height: f.row.bottom - f.row.top + 4 }}
               />

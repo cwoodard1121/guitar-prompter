@@ -26,8 +26,10 @@ interface State {
   tapOpen: boolean;
   /** Playback speed (1 = song tempo). The recording keeps its pitch. */
   speed: number;
-  /** Loop this many bars from the cursor while playing (0 = off). */
+  /** Loop this many bars from the cursor while playing (0 = off, -1 = the cursor's section). */
   loopBars: number;
+  /** Transcribe strip open: chords tapped while playing land on the beat you hear. */
+  transcribe: boolean;
   /** Hear the synth playing the tab/chords (off = just the recording + metronome). */
   synthOn: boolean;
 
@@ -35,7 +37,7 @@ interface State {
   setCursor: (c: Partial<Cursor>) => void;
   undo: () => void;
   redo: () => void;
-  set: (p: Partial<Pick<State, 'dur' | 'dotted' | 'stack' | 'chordStep' | 'capoView' | 'focusOnly' | 'playhead' | 'tapping' | 'tapOpen' | 'speed' | 'loopBars' | 'synthOn'>>) => void;
+  set: (p: Partial<Pick<State, 'dur' | 'dotted' | 'stack' | 'chordStep' | 'capoView' | 'focusOnly' | 'playhead' | 'tapping' | 'tapOpen' | 'speed' | 'loopBars' | 'synthOn' | 'transcribe'>>) => void;
   openSong: (id: string) => void;
   /** Makes a new song and opens it; returns its id. */
   createSong: () => string;
@@ -106,6 +108,7 @@ export const useStore = create<State>((set, get) => ({
   tapOpen: false,
   speed: 1,
   loopBars: 0,
+  transcribe: false,
   synthOn: true,
 
   edit(fn) {

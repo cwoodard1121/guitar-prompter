@@ -6,12 +6,15 @@ import { PartsRail } from './ui/PartsRail';
 import { ScoreView } from './ui/ScoreView';
 import { Fretboard } from './ui/Fretboard';
 import { ChordPalette } from './ui/ChordPalette';
-import { addBarsAtEnd, barCapacity, barCount, deleteAtCursor, placeChordName, placeChordShape, placeNote, removeNotes, setRest, usedChords } from './model/song';
+import { addBarsAtEnd, barCapacity, barCount, deleteAtCursor, newPart, placeChordName, placeChordShape, placeNote, playOrder, removeNotes, setRest, usedChords } from './model/song';
+import { REACTION, chordForKey, clearChord, heardBar, heardSlot, loopRange, setChordAt, snapTicks } from './model/transcribe';
+import { heardTicks, session, setSession, useLiveTaps, type LiveTap } from './state/playback';
+import { TranscribeBar } from './ui/TranscribeBar';
 import { carryChords, isSlot, notesToBars, type TapNote } from './model/rhythm';
 import { TapPanel } from './ui/TapPanel';
 import { identifyChord } from './model/music';
 import { audioClock, audition, play, type PlayHandle } from './audio/player';
-import { loadTrack, startTrack, stopTrack } from './audio/track';
+import { audioTimeOfBar, loadTrack, startTrack, stopTrack, trackElement } from './audio/track';
 import { ensureLocalAudio } from './storage/audioSync';
 import { toast } from './ui/Toaster';
 import type { Bar, Cursor, Dur } from './model/types';
@@ -35,6 +38,7 @@ export function App() {
   const chordStep = useStore((s) => s.chordStep);
   const capoView = useStore((s) => s.capoView);
   const tapOpen = useStore((s) => s.tapOpen);
+  const transcribe = useStore((s) => s.transcribe);
   const { edit, set, setCursor, undo, redo } = useStore.getState();
 
   const [preview, setPreview] = useState<number[] | null>(null);
@@ -92,6 +96,7 @@ export function App() {
   };
 
   const placeChord = (name: string, frets: number[] | null) => {
+    if (liveChord(name)) return setDraft(new Map());
     if (part.kind === 'chords') {
       edit((s, c) => placeChordName(s, c, name, chordStep, opts));
       setDraft(new Map());
@@ -133,38 +138,127 @@ export function App() {
   };
 
   const stopPlayback = useCallback(() => {
+    const sess = session();
+    const st = useStore.getState();
+    // transcribing: stopping is a pause, so the next play picks up at the bar you were hearing
+    if (sess && st.transcribe) {
+      const at = heardBar(st.song, sess.order, heardTicks(sess), sess.loop);
+      if (at) setCursor({ bar: Math.min(at.bar, barCount(st.song) - 1), beat: 0 });
+    }
+    setSession(null);
     handle.current?.stop();
     handle.current = null;
     stopTrack();
     setPlaying(false);
     set({ playhead: null });
-  }, [set]);
+  }, [set, setCursor]);
 
-  /** Plays from the cursor (looping its bars if Loop is on), with the recording in step. */
-  const startPlayback = useCallback(() => {
-    const st = useStore.getState();
-    const s = st.song;
-    const from = st.cursor.bar;
-    const h: PlayHandle = play(
-      s,
-      from,
-      { metronome, speed: st.speed, bars: st.loopBars || undefined, synth: st.synthOn },
-      (pos) => set({ playhead: pos }),
-      () => {
-        if (handle.current !== h) return;
-        if (useStore.getState().loopBars) startPlayback();
-        else stopPlayback();
-      },
-    );
-    handle.current = h;
-    startTrack(s, from, h, audioClock(), st.speed);
-    setPlaying(true);
-  }, [metronome, set, stopPlayback]);
+  /**
+   * Plays from `fromBar` (default: the cursor), looping bars or the section if
+   * Loop is on, with the recording in step. Transcribing, it runs to the end of
+   * the recording even past the written bars.
+   */
+  const startPlayback = useCallback(
+    (fromBar?: number) => {
+      const st = useStore.getState();
+      const s = st.song;
+      const { from, bars } = loopRange(s, fromBar ?? st.cursor.bar, st.loopBars);
+      let total = bars;
+      const el = trackElement();
+      if (!bars && st.transcribe && s.audio && el && Number.isFinite(el.duration)) {
+        const barSec = (60 / s.tempo / 16) * barCapacity(s);
+        total = Math.max(playOrder(s, from).length, Math.ceil((el.duration - audioTimeOfBar(s, from)) / barSec));
+      }
+      const h: PlayHandle = play(
+        s,
+        from,
+        { metronome, speed: st.speed, bars: total, synth: st.synthOn },
+        (pos) => set({ playhead: pos }),
+        () => {
+          if (handle.current !== h) return;
+          if (bars) startPlayback(from);
+          else stopPlayback();
+        },
+      );
+      handle.current = h;
+      setSession({ h, order: playOrder(s, from).slice(0, bars ?? Infinity), loop: !!bars, from });
+      startTrack(s, from, h, audioClock(), st.speed);
+      setPlaying(true);
+    },
+    [metronome, set, stopPlayback],
+  );
 
   const togglePlay = useCallback(() => {
     if (handle.current) stopPlayback();
     else startPlayback();
   }, [startPlayback, stopPlayback]);
+
+  /** Restarts at the bar being heard, `by` bars on (Back = -1; 0 after changing speed or loop). */
+  const jump = useCallback(
+    (by: number) => {
+      const st = useStore.getState();
+      const sess = session();
+      if (!sess || !handle.current) return setCursor({ bar: Math.max(0, Math.min(st.cursor.bar + by, barCount(st.song) - 1)), beat: 0 });
+      const at = heardBar(st.song, sess.order, heardTicks(sess), sess.loop)?.bar ?? sess.from;
+      const to = Math.max(0, Math.min(at + by, barCount(st.song) - 1));
+      setSession(null); // don't let the stop move the cursor
+      handle.current.stop();
+      handle.current = null;
+      stopTrack();
+      startPlayback(to);
+    },
+    [setCursor, startPlayback],
+  );
+
+  /**
+   * Transcribing while it plays: the chord lands on the beat you're hearing (less
+   * reaction time), snapped to the chord step, on the chord part. Returns false
+   * when nothing is playing, so the caller does its usual thing at the cursor.
+   */
+  function liveChord(name: string): boolean {
+    const st = useStore.getState();
+    const sess = session();
+    if (!sess || !st.transcribe) return false;
+    const slot = heardSlot(st.song, sess.order, heardTicks(sess, REACTION), snapTicks(st.song, st.chordStep), sess.loop);
+    if (!slot) return true; // still counting in
+    let tap: LiveTap | null = null;
+    let made = false;
+    st.edit((d, c) => {
+      let p = d.parts.find((x) => x.id === c.partId && x.kind === 'chords') ?? d.parts.find((x) => x.kind === 'chords');
+      if (!p) {
+        p = newPart(d, 'chords', barCount(d));
+        d.parts.unshift(p);
+        made = true;
+      }
+      tap = { partId: p.id, beatId: setChordAt(d, p.id, slot.bar, slot.tick, name), name, ...slot, after: d };
+      return c;
+    });
+    if (tap) {
+      const t: LiveTap = { ...(tap as LiveTap), after: useStore.getState().song };
+      useLiveTaps.setState((x) => ({ taps: [...x.taps.slice(-49), t] }));
+    }
+    if (made) toast('Added a Chords part for the chords you tap.');
+    return true;
+  }
+
+  /** Backspace while listening: takes the last live chord back off. */
+  function unTap(): boolean {
+    const { taps } = useLiveTaps.getState();
+    const last = taps[taps.length - 1];
+    if (!last) return false;
+    useLiveTaps.setState({ taps: taps.slice(0, -1) });
+    // still the latest edit: undo it, which also puts back a chord it replaced
+    if (useStore.getState().song === last.after) return useStore.getState().undo(), true;
+    let gone = false;
+    useStore.getState().edit((d, c) => ((gone = clearChord(d, last.partId, last.beatId)), c));
+    if (!gone) useStore.getState().undo(); // already gone (undone): drop the empty history step
+    return true;
+  }
+  const liveRef = useRef({ liveChord, unTap });
+  liveRef.current = { liveChord, unTap };
+
+  // the strip's tap list belongs to one song
+  useEffect(() => useLiveTaps.setState({ taps: [] }), [song.id]);
 
   // keep the song's recording loaded (IndexedDB on this device, fetched from the account if needed)
   const audioRev = song.audio?.rev;
@@ -198,6 +292,21 @@ export function App() {
       }
       if (mod) return;
       const bars = p.bars;
+      const live = st.transcribe && !!session();
+      if (live && (e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+        e.preventDefault();
+        jump(e.key === 'ArrowLeft' ? -1 : 1);
+        return;
+      }
+      if (live && e.key === 'Backspace' && liveRef.current.unTap()) return e.preventDefault();
+      if (/^[1-9]$/.test(e.key) && p.kind === 'chords') {
+        // chord part: 1-9 are the song's chords
+        const name = chordForKey(usedChords(st.song), e.key);
+        if (!name) return;
+        e.preventDefault();
+        if (!liveRef.current.liveChord(name)) st.edit((s, cc) => placeChordName(s, cc, name, st.chordStep, { dur: st.dur, dotted: st.dotted, stack: st.stack }));
+        return;
+      }
       switch (e.key) {
         case ' ':
           e.preventDefault();
@@ -290,7 +399,7 @@ export function App() {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [togglePlay, setCursor, undo, redo]);
+  }, [togglePlay, jump, setCursor, undo, redo]);
 
   return (
     <div className="app">
@@ -302,7 +411,8 @@ export function App() {
           <ScoreView />
         </main>
       </div>
-      <section className="dock" aria-label={part.kind === 'tab' ? 'Fretboard and chords' : 'Chords'}>
+      <section className={'dock' + (transcribe ? ' is-transcribing' : '')} aria-label={part.kind === 'tab' ? 'Fretboard and chords' : 'Chords'}>
+        {transcribe && <TranscribeBar playing={playing} onPlay={togglePlay} onJump={jump} onUnTap={() => liveRef.current.unTap()} />}
         <div className="dock-board">
           <div className="dock-hint">
             <span className="part-pip" style={{ background: part.color }} />

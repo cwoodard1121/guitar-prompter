@@ -23,6 +23,7 @@ export function Toolbar() {
   const dur = useStore((s) => s.dur);
   const dotted = useStore((s) => s.dotted);
   const stack = useStore((s) => s.stack);
+  const transcribe = useStore((s) => s.transcribe);
   const cursor = useStore((s) => s.cursor);
   const song = useStore((s) => s.song);
   const canUndo = useStore((s) => s.past.length > 0);
@@ -76,6 +77,14 @@ export function Toolbar() {
       <div className="tgroup">
         <button className="tool tool-text tool-accent" onClick={() => set({ tapOpen: !useStore.getState().tapOpen })} title="Tap the rhythm first, fill in notes after">
           <Icon name="tap" size={14} /> Tap rhythm
+        </button>
+        <button
+          className={'tool tool-text' + (transcribe ? ' on' : '')}
+          aria-pressed={transcribe}
+          onClick={() => set({ transcribe: !transcribe })}
+          title="Play the song and tap chords as you hear them"
+        >
+          <Icon name="audio" size={14} /> Transcribe
         </button>
       </div>
 

@@ -87,7 +87,7 @@ export function TopBar({ playing, metronome, onPlay, onMetronome }: Props) {
         <button className={'icon-btn' + (metronome ? ' on' : '')} onClick={onMetronome} aria-pressed={metronome} aria-label="Metronome" title="Metronome">
           <Icon name="metronome" size={16} />
         </button>
-        <Menu label="Practice: tap tempo, slow down, loop" icon="loop" text={practiceOn ? `${Math.round(speed * 100)}%${loopBars ? ` · ${loopBars} bar${loopBars > 1 ? 's' : ''}` : ''}` : 'Practice'} align="right" active={practiceOn}>
+        <Menu label="Practice: tap tempo, slow down, loop" icon="loop" text={practiceOn ? `${Math.round(speed * 100)}%${loopBars < 0 ? ' · section' : loopBars ? ` · ${loopBars} bar${loopBars > 1 ? 's' : ''}` : ''}` : 'Practice'} align="right" active={practiceOn}>
           {() => (
             <div className="practice">
               <div className="practice-row">
@@ -110,14 +110,14 @@ export function TopBar({ playing, metronome, onPlay, onMetronome }: Props) {
               <div className="practice-row">
                 <span className="pal-key">Loop</span>
                 <div className="seg" role="radiogroup" aria-label="Loop bars from the cursor">
-                  {[0, 1, 2, 4].map((v) => (
+                  {[0, -1, 1, 2, 4].map((v) => (
                     <button key={v} role="radio" aria-checked={loopBars === v} className={loopBars === v ? 'on' : ''} onClick={() => set({ loopBars: v })}>
-                      {v ? `${v} bar${v > 1 ? 's' : ''}` : 'Off'}
+                      {v < 0 ? 'Section' : v ? `${v} bar${v > 1 ? 's' : ''}` : 'Off'}
                     </button>
                   ))}
                 </div>
               </div>
-              <p className="practice-hint">Slowing down keeps the recording's pitch. Loops start at the cursor.</p>
+              <p className="practice-hint">Slowing down keeps the recording's pitch. Loops start at the cursor (or its section).</p>
             </div>
           )}
         </Menu>
