@@ -100,3 +100,13 @@ export interface Cursor {
   beat: number;
   string: number;
 }
+
+/** An ordered set of songs to play through (a gig, a rehearsal). */
+export interface Setlist {
+  id: string;
+  name: string;
+  /** Song ids in play order. A deleted song stays listed (shown as missing) until removed. */
+  songIds: string[];
+  createdAt: number;
+  updatedAt: number;
+}

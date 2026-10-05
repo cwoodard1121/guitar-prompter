@@ -269,11 +269,19 @@ export function Stage({ song, actions, backHref = '#/', backLabel = 'All songs',
         case 'H':
           setChrome((c) => !c);
           break;
+        case 'n':
+        case 'N':
+          if (nav?.next) location.hash = nav.next.href;
+          break;
+        case 'p':
+        case 'P':
+          if (nav?.prev) location.hash = nav.prev.href;
+          break;
       }
     };
     window.addEventListener('keydown', k);
     return () => window.removeEventListener('keydown', k);
-  }, [toggle, turn]);
+  }, [toggle, turn, nav]);
 
   /** Tap the left/right third to turn back/forward; the middle shows or hides the controls. */
   const onTap = (e: React.MouseEvent<HTMLDivElement>) => {
