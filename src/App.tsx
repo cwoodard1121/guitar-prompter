@@ -12,8 +12,7 @@ import { TapPanel } from './ui/TapPanel';
 import { identifyChord } from './model/music';
 import { audioClock, audition, play, type PlayHandle } from './audio/player';
 import { loadTrack, startTrack, stopTrack } from './audio/track';
-import { useAccount, useSync } from './storage/useAccount';
-import { loadLocalSongs, onOtherTabChange } from './storage/storage';
+import { toast } from './ui/Toaster';
 import type { Bar, Cursor, Dur } from './model/types';
 
 const DURS: Dur[] = [1, 2, 4, 8, 16, 32];
@@ -36,27 +35,17 @@ export function App() {
   const capoView = useStore((s) => s.capoView);
   const tapOpen = useStore((s) => s.tapOpen);
   const { edit, set, setCursor, undo, redo } = useStore.getState();
-  const user = useAccount();
-  useSync(user);
 
   const [preview, setPreview] = useState<number[] | null>(null);
   const [draft, setDraft] = useState<Map<number, number>>(new Map());
   const [playing, setPlaying] = useState(false);
   const [metronome, setMetronome] = useState(false);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const handle = useRef<PlayHandle | null>(null);
   const keyBuf = useRef<{ digits: string; at: number; at2: Cursor } | null>(null);
-  const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  const toast = useCallback((m: string) => {
-    setToastMsg(m);
-    clearTimeout(toastTimer.current);
-    toastTimer.current = setTimeout(() => setToastMsg(null), 2600);
-  }, []);
-
-
-  // Another tab saved songs: pull them in (newest wins, so nothing newer here is lost).
-  useEffect(() => onOtherTabChange(() => useStore.getState().replaceLibrary(loadLocalSongs())), []);
+  useEffect(() => {
+    document.title = `${song.title || 'Untitled'} · Guitar Prompter`;
+  }, [song.title]);
 
   useEffect(() => setDraft(new Map()), [cursor.partId]);
 
@@ -300,7 +289,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar user={user} playing={playing} metronome={metronome} onPlay={togglePlay} onMetronome={() => setMetronome(!metronome)} toast={toast} />
+      <TopBar playing={playing} metronome={metronome} onPlay={togglePlay} onMetronome={() => setMetronome(!metronome)} />
       <div className="body">
         <PartsRail />
         <main className="sheet">
@@ -358,11 +347,6 @@ export function App() {
           onClearDraft={() => setDraft(new Map())}
         />
       </section>
-      {toastMsg && (
-        <div className="toast" role="status">
-          {toastMsg}
-        </div>
-      )}
     </div>
   );
 }

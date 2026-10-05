@@ -8,11 +8,3 @@ export function saveFile(filename: string, data: string, type = 'application/jso
   setTimeout(() => URL.revokeObjectURL(url), 2000);
   return 'saved';
 }
-
-export function pickFile(accept = '.json,application/json'): Promise<string | null> {
-  return new Promise((resolve) => {
-    const input = Object.assign(document.createElement('input'), { type: 'file', accept });
-    input.onchange = async () => resolve(input.files?.[0] ? await input.files[0].text() : null);
-    input.click();
-  });
-}

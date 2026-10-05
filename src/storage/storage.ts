@@ -48,6 +48,14 @@ export function saveLocal(song: Song) {
   write(KEY, all);
 }
 
+/** Brings a deleted song back (Undo): forgets its tombstone so sync sends it again. */
+export function restoreLocal(song: Song) {
+  const t = readTombstones();
+  delete t[song.id];
+  write(TOMBSTONES, t);
+  saveLocal(song);
+}
+
 /** Calls back when another tab changes the saved songs. */
 export function onOtherTabChange(cb: () => void) {
   const h = (e: StorageEvent) => e.key === KEY && cb();

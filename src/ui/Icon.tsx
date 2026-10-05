@@ -26,18 +26,35 @@ const P: Record<string, string> = {
   minus: 'M5 12h14',
   repeat: 'M4 9h12l-3-3M20 15H8l3 3M4 9v2M20 15v-2',
   audio: 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zM19 16a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z',
+  search: 'M10.5 4a6.5 6.5 0 1 0 0 13 6.5 6.5 0 0 0 0-13zM15.5 15.5 20 20',
+  more: 'M6 12h.01M12 12h.01M18 12h.01',
+  home: 'M4 11.5 12 5l8 6.5M6.5 10v9h11v-9',
+  back: 'M10 6l-6 6 6 6M4.5 12H20',
+  stage: 'M3 5h18v11H3zM8 20h8M12 16v4',
+  share: 'M12 4v11M8 8l4-4 4 4M6 12v7h12v-7',
+  close: 'M6 6l12 12M18 6 6 18',
+  check: 'm5 12.5 4.5 4.5L19 7.5',
+  link: 'M10 14a4 4 0 0 0 5.7 0l3-3a4 4 0 0 0-5.7-5.7l-1 1M14 10a4 4 0 0 0-5.7 0l-3 3a4 4 0 0 0 5.7 5.7l1-1',
+  list: 'M9 6h11M9 12h11M9 18h11M4.5 6h.01M4.5 12h.01M4.5 18h.01',
+  user: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zM4.5 20a7.5 7.5 0 0 1 15 0',
+  cloud: 'M7 18a4.5 4.5 0 0 1-.6-9A6 6 0 0 1 18 9.5a4.3 4.3 0 0 1-.5 8.5z',
+  grip: 'M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01',
+  fullscreen: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
+  textUp: 'M4 18 9 6l5 12M5.8 14h6.4M17 9v6M14 12h6',
+  textDown: 'M4 18 9 6l5 12M5.8 14h6.4M14 12h6',
   loop: 'M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4',
 };
 
 export function Icon({ name, size = 16 }: { name: keyof typeof P | string; size?: number }) {
   const filled = name === 'play' || name === 'stop';
+  const dots = name === 'more' || name === 'grip';
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true" className="icon">
       <path
         d={P[name]}
         fill={filled ? 'currentColor' : 'none'}
         stroke={filled ? 'none' : 'currentColor'}
-        strokeWidth={1.7}
+        strokeWidth={dots ? 2.6 : 1.7}
         strokeLinecap="round"
         strokeLinejoin="round"
       />

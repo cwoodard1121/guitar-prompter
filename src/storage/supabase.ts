@@ -6,7 +6,8 @@ const url = import.meta.env.VITE_SUPABASE_URL as string | undefined;
 const key = import.meta.env.VITE_SUPABASE_ANON_KEY as string | undefined;
 
 /** Null when .env.local isn't set up — the app then runs local-only. */
-export const supabase: SupabaseClient | null = url && key ? createClient(url, key) : null;
+// PKCE: sign-in links come back as ?code=… which can't collide with the app's #/routes.
+export const supabase: SupabaseClient | null = url && key ? createClient(url, key, { auth: { flowType: 'pkce' } }) : null;
 
 const iso = (ms: number) => new Date(ms).toISOString();
 const ms = (s: string | null) => (s ? new Date(s).getTime() : null);
