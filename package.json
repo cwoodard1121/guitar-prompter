@@ -1,34 +1,33 @@
 {
-  "name": "guitar-prompter",
+  "name": "guitarprompter",
   "private": true,
   "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:server": "node server.js",
-    "build": "vite build",
+    "build": "tsc --noEmit && vite build",
+    "build:single": "vite build --mode single",
     "preview": "vite preview",
-    "start": "node server.js"
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cwoodard1121/guitar-prompter.git"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.100.0",
-    "bcryptjs": "^3.0.3",
-    "cookie-parser": "^1.4.7",
-    "dotenv": "^17.3.1",
-    "express": "^5.2.1",
-    "jsonwebtoken": "^9.0.3",
-    "lucide-vue-next": "^1.0.0",
-    "openai": "^6.32.0",
-    "pinia": "^2.1.7",
-    "svguitar": "^2.5.1",
-    "vue": "^3.4.0",
-    "vue-router": "^4.3.0"
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "vexflow": "^4.2.5",
+    "zustand": "^5.0.15"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
-    "@types/jsonwebtoken": "^9.0.10",
-    "@vitejs/plugin-vue": "^5.0.0",
-    "vite": "^5.0.0",
-    "vite-plugin-pwa": "^0.20.0"
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.1.2",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vite-plugin-singlefile": "^2.3.3",
+    "vitest": "^5.0.3"
   }
 }
