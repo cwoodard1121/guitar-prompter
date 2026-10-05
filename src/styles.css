@@ -183,7 +183,7 @@ select {
 /* --------------------------------------------------------------- sheet */
 .sheet { display: grid; grid-template-rows: auto minmax(0, 1fr); min-height: 0; min-width: 0; }
 .toolbar {
-  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px;
+  display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px;
   padding: 6px 12px; border-bottom: 1px solid var(--nickel); background: var(--wood-0);
 }
 .tgroup { display: flex; align-items: center; gap: 2px; }
@@ -290,7 +290,7 @@ select {
 .pick-actions .seg button { flex: 1; padding: 4px 4px; }
 
 /* ---------------------------------------------------------- narrow widths */
-@media (max-width: 1100px) {
+@media (max-width: 880px) {
   .dock { grid-template-columns: minmax(0, 1fr); }
   .dock-board { border-right: 0; border-bottom: 1px solid var(--nickel); }
   .pal-main { max-height: 150px; }
@@ -303,10 +303,6 @@ select {
   .part { flex: none; }
   .part-settings { position: absolute; z-index: 25; width: 260px; background: var(--wood-2); border: 1px solid var(--nickel-hi); border-radius: 8px; }
   .rail-add { display: flex; padding: 4px 6px; border-top: 0; }
-  .topbar { flex-wrap: wrap; gap: 8px; }
-  .title-fields { order: 3; flex-basis: 100%; }
-  .artist-input { width: 12ch; }
-  .views { margin-left: auto; }
   .palette { grid-template-columns: minmax(0, 1fr); }
   .pal-side { flex-direction: row; flex-wrap: wrap; align-items: center; }
   .pick { grid-auto-flow: column; }
@@ -380,9 +376,6 @@ select {
 .audio-line input[type=range] { flex: 1; accent-color: var(--abalone); }
 .audio-row label.check { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--pearl-2); }
 .audio-row label.check input { accent-color: var(--abalone); }
-.tap-tempo { font-size: 11px; font-weight: 700; padding: 0 8px; }
-select.speed { width: 64px; }
-select.loop.on { color: var(--amber); }
 
 /* ------------------------------------------------------------- pages */
 .page { height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr); background: var(--wood-0); }
@@ -691,4 +684,45 @@ a.set-song:hover strong { color: var(--abalone); }
   .set-meta { display: none; }
   .set-move { opacity: 1; }
   .set-grip { display: none; }
+}
+
+/* ------------------------------------------------------------- polish pass (#40) */
+.icon-btn-text { display: inline-flex; gap: 6px; padding: 0 10px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.icon-btn.is-active { color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.menu:has(.practice) { width: min(360px, calc(100vw - 16px)); padding: 12px; }
+.practice { display: grid; gap: 10px; }
+.practice-row { display: grid; grid-template-columns: 52px auto 1fr; align-items: center; gap: 8px; }
+.practice-row .pal-key { padding: 0; }
+.practice-row .seg { grid-column: 2 / -1; justify-self: start; }
+.practice-row .seg button { padding: 4px 8px; }
+.practice-hint { margin: 0; color: var(--pearl-3); font-size: 11px; }
+.transport { padding-inline: 10px; border-inline: 1px solid var(--nickel); }
+.title-fields input { max-width: 100%; }
+
+/* toolbar: hairline between groups so durations / techniques / bar tools read as sets */
+.toolbar > .tgroup ~ .tgroup:not(.tgroup-end)::before {
+  content: ''; width: 1px; height: 18px; margin-right: 6px; background: var(--nickel);
+}
+
+@media (max-width: 760px) {
+  /* the editor becomes a scrolling page on phones instead of a squeezed fixed frame */
+  #root:has(.app) { height: auto; min-height: 100%; }
+  body:has(.app) { overflow: auto; }
+  .app { height: auto; min-height: 100%; grid-template-rows: auto auto auto; }
+  .body { grid-template-rows: auto auto; }
+  .sheet { grid-template-rows: auto auto; }
+  .score-wrap { height: 56vh; height: 56dvh; }
+  .section-nav { position: static; margin-top: 0; }
+  .topbar { flex-wrap: wrap; gap: 6px 8px; padding-inline: 8px; }
+  .title-fields { flex: 1 1 calc(100% - 48px); min-width: 0; }
+  .views { order: 4; margin-left: auto; }
+  .toolbar > .tgroup ~ .tgroup:not(.tgroup-end)::before { display: none; }
+  .title-fields input { width: auto !important; min-width: 0; flex: 1 1 0; }
+  .title-input { font-size: 15px; }
+  .transport { order: 3; width: 100%; border: 0; padding: 0; overflow-x: auto; scrollbar-width: none; }
+  .views { gap: 2px; }
+  .views .seg button { padding: 4px 7px; }
+  .menu:has(.practice) { position: fixed; top: 96px; left: 8px; right: 8px; width: auto; }
+  .stage-fs { display: none; }
+  .stage-tools .btn .btn-label { display: none; }
 }
