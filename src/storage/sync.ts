@@ -1,4 +1,8 @@
-import type { Song } from '../model/types';
+/** Anything that syncs: songs, setlists. */
+export interface Synced {
+  id: string;
+  updatedAt: number;
+}
 
 /** What the remote knows about a song without downloading it. Times are epoch ms. */
 export interface RemoteMeta {
@@ -7,11 +11,11 @@ export interface RemoteMeta {
   deletedAt: number | null;
 }
 
-export interface SyncPlan {
+export interface SyncPlan<T extends Synced = Synced> {
   /** Remote is newer: download these and replace local. */
   pull: string[];
   /** Local is newer (or remote has never seen it): upload. */
-  push: Song[];
+  push: T[];
   /** Deleted here, still alive remotely: send the tombstone. */
   pushDelete: { id: string; at: number }[];
   /** Deleted on the other device: remove locally. */
@@ -24,8 +28,8 @@ export interface SyncPlan {
  * Newest-wins reconciliation between this device and the remote.
  * Pure, so every rule below is unit tested.
  */
-export function planSync(local: Song[], tombstones: Record<string, number>, remote: RemoteMeta[]): SyncPlan {
-  const plan: SyncPlan = { pull: [], push: [], pushDelete: [], dropLocal: [], clearTombstones: [] };
+export function planSync<T extends Synced>(local: T[], tombstones: Record<string, number>, remote: RemoteMeta[]): SyncPlan<T> {
+  const plan: SyncPlan<T> = { pull: [], push: [], pushDelete: [], dropLocal: [], clearTombstones: [] };
   const byId = new Map(local.map((s) => [s.id, s]));
   const seen = new Set<string>();
 

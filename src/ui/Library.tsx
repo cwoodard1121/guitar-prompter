@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useStore } from '../state/store';
 import { useAccount, syncAndApply } from '../storage/useAccount';
 import { parseSongFile, pickTextFiles } from '../storage/songFile';
@@ -51,10 +51,42 @@ function songMeta(s: Song) {
   return [`${s.tempo} bpm`, s.timeSig.join('/'), capo ? `capo ${capo}` : null].filter(Boolean).join(' · ');
 }
 
+/** The library frame: brand, Songs / Setlists tabs, account, sync banner. */
+export function Shell({ tab, children }: { tab: 'songs' | 'sets'; children: ReactNode }) {
+  const sync = useSyncState();
+  return (
+    <div className="page">
+      <header className="page-top">
+        <Brand />
+        <nav className="page-tabs" aria-label="Library">
+          <a className={tab === 'songs' ? 'on' : ''} href="#/" aria-current={tab === 'songs' ? 'page' : undefined}>
+            Songs
+          </a>
+          <a className={tab === 'sets' ? 'on' : ''} href="#/sets" aria-current={tab === 'sets' ? 'page' : undefined}>
+            Setlists
+          </a>
+        </nav>
+        <div className="page-top-end">
+          <AccountButton />
+        </div>
+      </header>
+
+      {sync === 'error' && (
+        <div className="banner" role="alert">
+          <span>Couldn't reach the sync server. Everything is saved on this device and will sync when it can.</span>
+          <button className="btn btn-small" onClick={() => void syncAndApply()}>
+            Retry
+          </button>
+        </div>
+      )}
+      {children}
+    </div>
+  );
+}
+
 export function Library() {
   const library = useStore((s) => s.library);
   const { createSong, addSongs } = useStore.getState();
-  const sync = useSyncState();
   const [query, setQuery] = useState('');
   const [sort, setSort] = useState<SongSort>(readSort);
   const search = useRef<HTMLInputElement>(null);
@@ -106,28 +138,7 @@ export function Library() {
   const newSong = () => navigate({ name: 'song', id: createSong() });
 
   return (
-    <div className="page">
-      <header className="page-top">
-        <Brand />
-        <nav className="page-tabs" aria-label="Library">
-          <a className="on" href="#/" aria-current="page">
-            Songs
-          </a>
-        </nav>
-        <div className="page-top-end">
-          <AccountButton />
-        </div>
-      </header>
-
-      {sync === 'error' && (
-        <div className="banner" role="alert">
-          <span>Couldn't reach the sync server. Everything is saved on this device and will sync when it can.</span>
-          <button className="btn btn-small" onClick={() => void syncAndApply()}>
-            Retry
-          </button>
-        </div>
-      )}
-
+    <Shell tab="songs">
       <main className="lib">
         <div className="lib-head">
           <h1>
@@ -219,6 +230,6 @@ export function Library() {
           </ul>
         )}
       </main>
-    </div>
+    </Shell>
   );
 }

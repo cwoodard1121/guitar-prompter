@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { Song } from '../model/types';
+import type { Setlist, Song } from '../model/types';
+import type { Synced } from './sync';
 import type { RemoteStore } from './storage';
 import { audioPath, audioType } from './audioPlan';
 import type { AudioRemote } from './audioSync';
@@ -15,55 +16,66 @@ const iso = (ms: number) => new Date(ms).toISOString();
 const ms = (s: string | null) => (s ? new Date(s).getTime() : null);
 
 /**
- * Songs table behind RLS: every call runs as the signed-in user and Postgres
+ * A synced table behind RLS: every call runs as the signed-in user and Postgres
  * only ever shows or changes that user's rows. No server of our own.
+ * `columns` adds searchable plain columns next to the full JSON document.
  */
-export function supabaseRemote(client: SupabaseClient, userId: string): RemoteStore {
-  const songs = () => client.from('guitar_songs');
+function tableRemote<T extends Synced>(
+  client: SupabaseClient,
+  userId: string,
+  table: string,
+  columns: (item: T) => Record<string, unknown>,
+  onDelete?: (id: string) => Promise<unknown>,
+): RemoteStore<T> {
+  const rows = () => client.from(table);
   const fail = (error: { message: string } | null) => {
     if (error) throw new Error(error.message);
   };
   return {
     async meta() {
-      const { data, error } = await songs().select('id, updated_at, deleted_at');
+      const { data, error } = await rows().select('id, updated_at, deleted_at');
       fail(error);
       return (data ?? []).map((r) => ({ id: r.id as string, updatedAt: ms(r.updated_at)!, deletedAt: ms(r.deleted_at) }));
     },
     async fetch(ids) {
-      const out: Song[] = [];
+      const out: T[] = [];
       for (let i = 0; i < ids.length; i += 100) {
-        const { data, error } = await songs().select('data').in('id', ids.slice(i, i + 100));
+        const { data, error } = await rows().select('data').in('id', ids.slice(i, i + 100));
         fail(error);
-        for (const r of data ?? []) if (r.data) out.push(r.data as Song);
+        for (const r of data ?? []) if (r.data) out.push(r.data as T);
       }
       return out;
     },
-    async put(song) {
-      const { error } = await songs().upsert(
-        {
-          owner_id: userId,
-          id: song.id,
-          title: song.title,
-          artist: song.artist,
-          data: song,
-          updated_at: iso(song.updatedAt),
-          deleted_at: null,
-        },
+    async put(item) {
+      const { error } = await rows().upsert(
+        { owner_id: userId, id: item.id, ...columns(item), data: item, updated_at: iso(item.updatedAt), deleted_at: null },
         { onConflict: 'owner_id,id' },
       );
       fail(error);
     },
     async markDeleted(id, at) {
-      const { error } = await songs().upsert(
+      const { error } = await rows().upsert(
         { owner_id: userId, id, data: null, updated_at: iso(at), deleted_at: iso(at) },
         { onConflict: 'owner_id,id' },
       );
       fail(error);
-      // its recording goes too (best effort: a leftover file is harmless and private)
-      await client.storage.from(BUCKET).remove([audioPath(userId, id)]).catch(() => undefined);
+      await onDelete?.(id);
     },
   };
 }
+
+export const supabaseRemote = (client: SupabaseClient, userId: string) =>
+  tableRemote<Song>(
+    client,
+    userId,
+    'guitar_songs',
+    (s) => ({ title: s.title, artist: s.artist }),
+    // its recording goes too (best effort: a leftover file is harmless and private)
+    (id) => client.storage.from(BUCKET).remove([audioPath(userId, id)]).catch(() => undefined),
+  );
+
+export const supabaseSetlists = (client: SupabaseClient, userId: string) =>
+  tableRemote<Setlist>(client, userId, 'guitar_setlists', (s) => ({ name: s.name }));
 
 const BUCKET = 'guitar-audio';
 

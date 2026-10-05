@@ -1,10 +1,11 @@
 import { useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { create } from 'zustand';
-import { supabase, supabaseAudio, supabaseRemote } from './supabase';
+import { supabase, supabaseAudio, supabaseRemote, supabaseSetlists } from './supabase';
 import { setAudioRemote, uploadPending } from './audioSync';
-import { setRemote, syncNow } from './storage';
+import { setlists, songs } from './storage';
 import { useStore } from '../state/store';
+import { useSetlists } from '../state/setlists';
 
 const useAuth = create<{ user: User | null }>(() => ({ user: null }));
 if (supabase) {
@@ -19,24 +20,27 @@ if (supabase) {
 export const useAccount = (): User | null => useAuth((s) => s.user);
 export const currentUser = () => useAuth.getState().user;
 
-/** Runs a sync and applies the merged library to the editor. */
+/** Runs a sync and applies the merged songs and setlists. */
 export async function syncAndApply() {
-  const merged = await syncNow();
+  const [merged, sets] = await Promise.all([songs.syncNow(), setlists.syncNow()]);
   if (merged) {
     useStore.getState().replaceLibrary(merged);
     void uploadPending();
   }
+  if (sets) useSetlists.getState().replace(sets);
 }
 
 /** Keeps songs synced while signed in: now, every minute, on focus and when back online. */
 export function useSync(user: User | null) {
   useEffect(() => {
     if (!supabase || !user) {
-      setRemote(null);
+      songs.setRemote(null);
+      setlists.setRemote(null);
       setAudioRemote(null);
       return;
     }
-    setRemote(supabaseRemote(supabase, user.id));
+    songs.setRemote(supabaseRemote(supabase, user.id));
+    setlists.setRemote(supabaseSetlists(supabase, user.id));
     setAudioRemote(supabaseAudio(supabase, user.id));
     void syncAndApply();
     const tick = () => void syncAndApply();
