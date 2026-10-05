@@ -4,6 +4,8 @@ import { useStore } from './state/store';
 import { useAccount, useSync } from './storage/useAccount';
 import { loadLocalSongs, onOtherTabChange } from './storage/storage';
 import { Library } from './ui/Library';
+import { Stage } from './ui/Stage';
+import { Icon } from './ui/Icon';
 import { navigate, useRoute } from './ui/router';
 import { Toaster, toast } from './ui/Toaster';
 
@@ -18,7 +20,7 @@ export function Root() {
   // Another tab saved songs: pull them in (newest wins, so nothing newer here is lost).
   useEffect(() => onOtherTabChange(() => useStore.getState().replaceLibrary(loadLocalSongs())), []);
 
-  const songId = route.name === 'song' ? route.id : null;
+  const songId = route.name === 'song' || route.name === 'play' ? route.id : null;
   const known = songId ? library.some((s) => s.id === songId) : false;
 
   useEffect(() => {
@@ -33,6 +35,22 @@ export function Root() {
 
   let page = <Library />;
   if (route.name === 'song') page = known && openId === songId ? <App key={songId} /> : <div className="page" />;
+  if (route.name === 'play') {
+    const song = library.find((s) => s.id === route.id);
+    page = song ? (
+      <Stage
+        key={song.id}
+        song={song}
+        actions={
+          <a className="btn btn-small" href={`#/song/${encodeURIComponent(song.id)}`}>
+            <Icon name="gear" size={14} /> Edit
+          </a>
+        }
+      />
+    ) : (
+      <div className="page" />
+    );
+  }
 
   return (
     <>

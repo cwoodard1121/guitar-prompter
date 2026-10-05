@@ -444,7 +444,7 @@ kbd {
 .song-parts .icon { margin-left: 4px; }
 .song-meta, .song-when { color: var(--pearl-3); font-size: 12px; white-space: nowrap; }
 .song-when { text-align: right; }
-.song-actions { padding-right: 6px; opacity: 0.55; transition: opacity 0.15s; }
+.song-actions { display: flex; align-items: center; gap: 2px; padding-right: 6px; opacity: 0.55; transition: opacity 0.15s; }
 .song-row:hover .song-actions, .song-actions:focus-within { opacity: 1; }
 
 .empty { display: grid; justify-items: center; text-align: center; gap: 8px; padding: 72px 16px; color: var(--pearl-2); }
@@ -517,3 +517,99 @@ a.icon-btn { text-decoration: none; }
   animation: spin 0.8s linear infinite;
 }
 @keyframes spin { to { transform: rotate(360deg); } }
+
+/* ------------------------------------------------------------- stage */
+.stage {
+  --chord-size: calc(30px * var(--size, 1));
+  height: 100%; display: grid; grid-template-rows: auto auto minmax(0, 1fr) auto;
+  background: #0f0b09; color: var(--pearl);
+}
+.stage-top {
+  display: flex; align-items: center; gap: 12px; min-width: 0;
+  padding: 8px clamp(10px, 2vw, 20px); padding-top: calc(8px + env(safe-area-inset-top, 0px));
+  border-bottom: 1px solid var(--nickel); background: var(--wood-1);
+}
+.stage-title { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1; }
+.stage-title strong { font-size: 16px; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: -0.01em; }
+.stage-title span { color: var(--pearl-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.stage-tools { display: flex; align-items: center; gap: 6px; }
+.stage-size { display: flex; }
+.stage-setnav { display: flex; align-items: center; gap: 2px; padding: 0 6px; border-inline: 1px solid var(--nickel); }
+.stage-setpos { font-size: 12px; color: var(--pearl-2); white-space: nowrap; padding: 0 4px; }
+.stage-sections {
+  display: flex; gap: 4px; overflow-x: auto; padding: 8px clamp(10px, 2vw, 20px);
+  border-bottom: 1px solid var(--nickel); background: var(--wood-0); scrollbar-width: none;
+}
+.stage-sections .chip { flex: none; height: 28px; padding: 0 12px; font-size: 13px; }
+.stage-sections .chip.on { color: var(--amber); border-color: color-mix(in srgb, var(--amber) 50%, transparent); background: color-mix(in srgb, var(--amber) 12%, var(--wood-2)); }
+.stage-scroll {
+  position: relative; overflow-y: auto; overflow-x: hidden; min-height: 0;
+  padding: 18px clamp(12px, 3vw, 40px) 0; scroll-padding-top: 20px;
+}
+.stage-readline {
+  position: sticky; top: 28%; z-index: 2; height: 0; margin-left: calc(-1 * clamp(12px, 3vw, 40px));
+  pointer-events: none;
+}
+.stage-readline::before {
+  content: ''; position: absolute; left: 0; top: -7px; border: 7px solid transparent; border-left-color: color-mix(in srgb, var(--amber) 70%, transparent);
+}
+.stage-end { padding: 40px 0 55vh; text-align: center; color: var(--pearl-3); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+
+.chart { display: grid; gap: calc(14px * var(--size, 1)); }
+.chart-label {
+  margin: calc(14px * var(--size, 1)) 0 6px; color: var(--amber);
+  font-size: calc(13px * var(--size, 1)); font-weight: 750; letter-spacing: 0.1em; text-transform: uppercase;
+}
+.chart-line:first-child .chart-label { margin-top: 0; }
+.chart-bars { display: grid; grid-template-columns: repeat(var(--cols), minmax(0, 1fr)); }
+.cbar {
+  position: relative; min-height: calc(var(--chord-size) * 2.3);
+  padding: 0 10px; border-left: 2px solid var(--nickel-hi);
+  display: grid; grid-template-rows: 1fr auto; align-items: end;
+  transition: background 0.2s var(--ease);
+}
+.chart-bars .cbar:last-child { border-right: 2px solid var(--nickel-hi); }
+.cbar.rep-start { border-left: 5px double var(--pearl-2); }
+.cbar.rep-end { border-right: 5px double var(--pearl-2) !important; }
+.cbar.is-now { background: color-mix(in srgb, var(--amber) 14%, transparent); }
+.cbar.is-now .cbar-beats i { background: var(--amber); }
+.cbar.is-here { box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--amber) 55%, transparent); }
+.cbar-chords { position: relative; height: calc(var(--chord-size) * 1.3); }
+.cchord {
+  position: absolute; top: 0; left: 0; padding-right: 6px;
+  font-size: var(--chord-size); font-weight: 750; letter-spacing: -0.02em; line-height: 1.2;
+  color: var(--abalone); white-space: nowrap;
+}
+.cchord.is-carry { color: color-mix(in srgb, var(--abalone) 35%, transparent); font-weight: 600; }
+.cbar-beats { display: flex; justify-content: space-around; padding: 6px 0 8px; }
+.cbar-beats i { width: 3px; height: calc(12px * var(--size, 1)); border-radius: 2px; background: var(--nickel-hi); transform: skewX(-24deg); }
+.rep-times { position: absolute; right: 6px; top: -4px; font-size: calc(13px * var(--size, 1)); font-weight: 750; color: var(--pearl-2); }
+
+.stage-tab { position: relative; }
+.stage-tab-inner { position: relative; transform-origin: 0 0; }
+.stage-tab-inner svg { display: block; }
+.stage-tab-now { position: absolute; border-radius: 6px; background: color-mix(in srgb, var(--amber) 16%, transparent); pointer-events: none; }
+
+.stage-transport {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  padding: 8px clamp(10px, 2vw, 20px); padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  border-top: 1px solid var(--nickel); background: var(--wood-1);
+}
+.play-big { width: 44px; height: 44px; }
+.stage-pos { display: flex; align-items: baseline; gap: 10px; margin-left: 8px; color: var(--pearl-2); white-space: nowrap; }
+.stage-pos strong { color: var(--amber); font-weight: 700; }
+.stage-transport-end { margin-left: auto; display: flex; align-items: center; gap: 6px; }
+.stage-tempo { color: var(--pearl-3); font-size: 12px; margin-right: 4px; white-space: nowrap; }
+.stage-transport .icon-btn { font-size: 11px; font-weight: 700; }
+
+.stage.is-bare .stage-top, .stage.is-bare .stage-sections, .stage.is-bare .stage-transport { display: none; }
+.stage.is-bare { grid-template-rows: minmax(0, 1fr); }
+
+@media (max-width: 760px) {
+  .stage-top { flex-wrap: wrap; }
+  .stage-title { flex-basis: calc(100% - 50px); order: 0; }
+  .stage-tools { width: 100%; justify-content: flex-end; flex-wrap: wrap; }
+  .stage-tempo { display: none; }
+  .stage-pos { margin-left: 0; }
+}
+a.btn { text-decoration: none; }

@@ -114,6 +114,9 @@ export function TopBar({ playing, metronome, onPlay, onMetronome }: Props) {
           <Icon name={focusOnly ? 'eye' : 'layers'} size={16} />
         </button>
         <span className={'sync-dot sync-' + sync} title={sync === 'off' ? 'Saved on this device only. Sign in from the library to sync' : SYNC_LABEL[sync]} />
+        <a className="icon-btn" href={`#/play/${encodeURIComponent(song.id)}`} aria-label="Play on stage" title="Play on stage (big, scrolling view)">
+          <Icon name="stage" size={16} />
+        </a>
         <SongMenu song={song} inEditor />
       </div>
     </header>
