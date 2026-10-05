@@ -6,7 +6,16 @@ export interface Note {
   string: number;
   /** Fret relative to the capo (0 = open/capo). */
   fret: number;
+  /** Bend in semitones: 1 = ½, 2 = full, 3 = 1½. */
+  bend?: number;
+  /** Hammer-on / pull-off into the next note on this string. */
+  legato?: 'h' | 'p';
+  /** Slide into the next note on this string. */
+  slide?: 'up' | 'down';
+  vibrato?: boolean;
 }
+
+export type Technique = 'bend1' | 'bend2' | 'bend3' | 'h' | 'p' | 'slideUp' | 'slideDown' | 'vibrato';
 
 export interface Beat {
   id: string;
@@ -36,6 +45,8 @@ export interface Part {
   capo: number;
   color: string;
   muted: boolean;
+  /** Chord parts: write each chord's fingering as tab under the chart (default on). */
+  chordTab?: boolean;
   /** Every part has exactly `song.barCount` bars, so parts stay registered bar for bar. */
   bars: Bar[];
 }
@@ -43,6 +54,21 @@ export interface Part {
 export interface Marker {
   bar: number;
   label: string;
+}
+
+/** Bars `start`..`end` (inclusive) play `times` times in total. Applies to every part. */
+export interface Repeat {
+  start: number;
+  end: number;
+  times: number;
+}
+
+/** An imported recording to tab along with. The file itself stays on the device (IndexedDB). */
+export interface AudioTrack {
+  name: string;
+  /** Seconds into the recording where bar 1 starts. */
+  offset: number;
+  volume: number;
 }
 
 export interface Song {
@@ -53,6 +79,8 @@ export interface Song {
   timeSig: [number, number];
   parts: Part[];
   markers: Marker[];
+  repeats?: Repeat[];
+  audio?: AudioTrack;
   createdAt: number;
   updatedAt: number;
 }

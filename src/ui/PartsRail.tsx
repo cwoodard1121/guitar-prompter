@@ -4,6 +4,7 @@ import { TUNINGS, tuningLabel } from '../model/music';
 import { barCount, emptyBar, newPart, PART_COLORS } from '../model/song';
 import type { PartKind } from '../model/types';
 import { Icon } from './Icon';
+import { AudioRow } from './AudioRow';
 
 export function PartsRail() {
   const song = useStore((s) => s.song);
@@ -131,6 +132,16 @@ export function PartsRail() {
                       </button>
                     </div>
                   </div>
+                  {p.kind === 'chords' && (
+                    <label className="check">
+                      <input
+                        type="checkbox"
+                        checked={p.chordTab !== false}
+                        onChange={(e) => edit((d) => void (d.parts.find((x) => x.id === p.id)!.chordTab = e.target.checked))}
+                      />
+                      <span>Tab out chord shapes</span>
+                    </label>
+                  )}
                   <div className="field">
                     <span>Color</span>
                     <div className="swatches">
@@ -164,6 +175,7 @@ export function PartsRail() {
           );
         })}
       </ul>
+      <AudioRow />
       <div className="rail-add">
         <button className="btn btn-ghost" onClick={() => add('tab')}>
           <Icon name="plus" size={14} /> Tab part

@@ -91,6 +91,19 @@ export function ScoreView() {
 
   return (
     <div className="score-wrap" ref={wrap}>
+      {song.markers.length > 0 && (
+        <nav className="section-nav" aria-label="Sections">
+          {song.markers.map((m) => (
+            <button
+              key={m.bar}
+              className={'chip' + (cursor.bar >= m.bar && !song.markers.some((n) => n.bar > m.bar && n.bar <= cursor.bar) ? ' on' : '')}
+              onClick={() => setCursor({ bar: m.bar, beat: 0 })}
+            >
+              {m.label}
+            </button>
+          ))}
+        </nav>
+      )}
       {error && <div className="score-error">Couldn't draw the score: {error}</div>}
       <div
         className="score"

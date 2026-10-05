@@ -6,13 +6,14 @@ import { PartsRail } from './ui/PartsRail';
 import { ScoreView } from './ui/ScoreView';
 import { Fretboard } from './ui/Fretboard';
 import { ChordPalette } from './ui/ChordPalette';
-import { addBarsAtEnd, barCapacity, barCount, deleteAtCursor, placeChordName, placeChordShape, placeNote, setRest, usedChords } from './model/song';
-import { carryChords, isSlot, onsetsToBars } from './model/rhythm';
+import { addBarsAtEnd, barCapacity, barCount, deleteAtCursor, placeChordName, placeChordShape, placeNote, removeNotes, setRest, usedChords } from './model/song';
+import { carryChords, isSlot, notesToBars, type TapNote } from './model/rhythm';
 import { TapPanel } from './ui/TapPanel';
 import { identifyChord } from './model/music';
-import { audition, play, type PlayHandle } from './audio/player';
-import { connectRemote } from './storage/storage';
-import { artifactRemote } from './storage/artifactRemote';
+import { audioClock, audition, play, type PlayHandle } from './audio/player';
+import { loadTrack, startTrack, stopTrack } from './audio/track';
+import { useAccount, useSync } from './storage/useAccount';
+import { loadLocalSongs, onOtherTabChange } from './storage/storage';
 import type { Bar, Cursor, Dur } from './model/types';
 
 const DURS: Dur[] = [1, 2, 4, 8, 16, 32];
@@ -34,7 +35,9 @@ export function App() {
   const chordStep = useStore((s) => s.chordStep);
   const capoView = useStore((s) => s.capoView);
   const tapOpen = useStore((s) => s.tapOpen);
-  const { edit, set, setCursor, undo, redo, replaceLibrary } = useStore.getState();
+  const { edit, set, setCursor, undo, redo } = useStore.getState();
+  const user = useAccount();
+  useSync(user);
 
   const [preview, setPreview] = useState<number[] | null>(null);
   const [draft, setDraft] = useState<Map<number, number>>(new Map());
@@ -51,18 +54,9 @@ export function App() {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600);
   }, []);
 
-  // Sync with the claude.ai artifact store when we're running there.
-  useEffect(() => {
-    let alive = true;
-    void artifactRemote().then(async (r) => {
-      if (!r || !alive) return;
-      const merged = await connectRemote(r);
-      if (merged && alive) replaceLibrary(merged);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [replaceLibrary]);
+
+  // Another tab saved songs: pull them in (newest wins, so nothing newer here is lost).
+  useEffect(() => onOtherTabChange(() => useStore.getState().replaceLibrary(loadLocalSongs())), []);
 
   useEffect(() => setDraft(new Map()), [cursor.partId]);
 
@@ -99,6 +93,11 @@ export function App() {
       });
       return;
     }
+    // Tapping a note that's already lit on this beat takes it back off (no advance).
+    if (beat?.notes.some((n) => n.string === string && n.fret === fret)) {
+      edit((s, c) => (removeNotes(s, c.partId, c.bar, c.beat, string), { ...c, string }));
+      return;
+    }
     edit((s, c) => placeNote(s, c, string, fret, opts));
   };
 
@@ -123,12 +122,12 @@ export function App() {
   };
 
   /** Writes tapped onsets into the focused part as empty rhythm slots, then parks the cursor on the first one. */
-  const commitRhythm = (onsets: number[], startBar: number, bars: number) => {
+  const commitRhythm = (notes: TapNote[], startBar: number, bars: number) => {
     edit((d, c) => {
       const p = d.parts.find((x) => x.id === c.partId)!;
       const need = startBar + bars - barCount(d);
       if (need > 0) addBarsAtEnd(d, need);
-      const fresh = onsetsToBars(onsets, barCapacity(d), bars);
+      const fresh = notesToBars(notes, barCapacity(d), bars);
       fresh.forEach((b, i) => {
         carryChords(p.bars[startBar + i], b);
         p.bars[startBar + i] = b;
@@ -140,31 +139,47 @@ export function App() {
       return { ...c, bar: startBar, beat: 0 };
     });
     set({ tapOpen: false, stack: false });
-    toast(`${onsets.length} notes tapped. Now tap frets to fill them in order.`);
+    toast(`${notes.length} notes tapped. Now tap frets to fill them in order.`);
   };
 
-  const togglePlay = useCallback(() => {
-    if (handle.current) {
-      handle.current.stop();
-      handle.current = null;
-      setPlaying(false);
-      set({ playhead: null });
-      return;
-    }
-    const s = useStore.getState().song;
-    handle.current = play(
+  const stopPlayback = useCallback(() => {
+    handle.current?.stop();
+    handle.current = null;
+    stopTrack();
+    setPlaying(false);
+    set({ playhead: null });
+  }, [set]);
+
+  /** Plays from the cursor (looping its bars if Loop is on), with the recording in step. */
+  const startPlayback = useCallback(() => {
+    const st = useStore.getState();
+    const s = st.song;
+    const from = st.cursor.bar;
+    const h: PlayHandle = play(
       s,
-      useStore.getState().cursor.bar,
-      { metronome },
+      from,
+      { metronome, speed: st.speed, bars: st.loopBars || undefined, synth: st.synthOn },
       (pos) => set({ playhead: pos }),
       () => {
-        handle.current = null;
-        setPlaying(false);
-        set({ playhead: null });
+        if (handle.current !== h) return;
+        if (useStore.getState().loopBars) startPlayback();
+        else stopPlayback();
       },
     );
+    handle.current = h;
+    startTrack(s, from, h, audioClock(), st.speed);
     setPlaying(true);
-  }, [metronome, set]);
+  }, [metronome, set, stopPlayback]);
+
+  const togglePlay = useCallback(() => {
+    if (handle.current) stopPlayback();
+    else startPlayback();
+  }, [startPlayback, stopPlayback]);
+
+  // keep the song's recording loaded (it lives in IndexedDB on this device)
+  useEffect(() => {
+    void loadTrack(song.audio ? song.id : null);
+  }, [song.id, song.audio]);
 
   // keyboard: arrows move, digits type frets, Space plays, Delete removes
   useEffect(() => {
@@ -285,7 +300,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar playing={playing} metronome={metronome} onPlay={togglePlay} onMetronome={() => setMetronome(!metronome)} toast={toast} />
+      <TopBar user={user} playing={playing} metronome={metronome} onPlay={togglePlay} onMetronome={() => setMetronome(!metronome)} toast={toast} />
       <div className="body">
         <PartsRail />
         <main className="sheet">

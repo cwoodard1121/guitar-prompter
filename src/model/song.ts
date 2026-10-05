@@ -1,4 +1,4 @@
-import type { Bar, Beat, Cursor, Dur, Note, Part, PartKind, Song } from './types';
+import type { Bar, Beat, Cursor, Dur, Note, Part, PartKind, Song, Technique } from './types';
 import { TUNINGS, identifyChord } from './music';
 import { findVoicings } from './voicing';
 
@@ -76,11 +76,13 @@ export function addBarsAtEnd(song: Song, count = 1) {
 export function insertBar(song: Song, at: number) {
   for (const p of song.parts) p.bars.splice(at, 0, emptyBar(song, p.kind));
   for (const m of song.markers) if (m.bar >= at) m.bar++;
+  shiftRepeats(song, at, 1);
 }
 
 export function duplicateBar(song: Song, at: number) {
   for (const p of song.parts) p.bars.splice(at + 1, 0, cloneBar(p.bars[at]));
   for (const m of song.markers) if (m.bar > at) m.bar++;
+  shiftRepeats(song, at + 1, 1);
 }
 
 export function deleteBar(song: Song, at: number) {
@@ -90,6 +92,7 @@ export function deleteBar(song: Song, at: number) {
   }
   for (const p of song.parts) p.bars.splice(at, 1);
   song.markers = song.markers.filter((m) => m.bar !== at).map((m) => (m.bar > at ? { ...m, bar: m.bar - 1 } : m));
+  shiftRepeats(song, at, -1);
 }
 
 export const cloneBar = (bar: Bar): Bar => ({
@@ -280,6 +283,66 @@ export function setBeatDuration(song: Song, c: Cursor, dur: Dur, dotted: boolean
   beat.dotted = dotted;
 }
 
+/**
+ * The note a technique button acts on: the note under the cursor, or — since
+ * entering a note moves the cursor on — the one just entered on that string.
+ */
+export function techTarget(song: Song, c: Cursor): { bar: number; beat: number; note: Note } | null {
+  const part = partOf(song, c.partId);
+  if (part.kind !== 'tab') return null;
+  const at = (bar: number, beat: number) => part.bars[bar]?.beats[beat]?.notes.find((n) => n.string === c.string);
+  const here = at(c.bar, c.beat);
+  if (here) return { bar: c.bar, beat: c.beat, note: here };
+  let bar = c.bar;
+  let beat = c.beat - 1;
+  if (beat < 0 && bar > 0) {
+    bar -= 1;
+    beat = part.bars[bar].beats.length - 1;
+  }
+  const prev = beat >= 0 ? at(bar, beat) : undefined;
+  return prev ? { bar, beat, note: prev } : null;
+}
+
+/** Turns a technique on/off for the target note (bend amounts and slide directions replace each other). */
+export function toggleTechnique(song: Song, c: Cursor, t: Technique) {
+  const target = techTarget(song, c);
+  if (!target) return;
+  const n = target.note;
+  switch (t) {
+    case 'bend1':
+    case 'bend2':
+    case 'bend3': {
+      const amt = Number(t.slice(4));
+      n.bend = n.bend === amt ? undefined : amt;
+      break;
+    }
+    case 'h':
+    case 'p':
+      n.legato = n.legato === t ? undefined : t;
+      if (n.legato) n.slide = undefined;
+      break;
+    case 'slideUp':
+    case 'slideDown': {
+      const dir = t === 'slideUp' ? 'up' : 'down';
+      n.slide = n.slide === dir ? undefined : dir;
+      if (n.slide) n.legato = undefined;
+      break;
+    }
+    case 'vibrato':
+      n.vibrato = n.vibrato ? undefined : true;
+      break;
+  }
+}
+
+/** Removes one note from a beat (or every note when `string` is omitted). The beat stays as a slot. */
+export function removeNotes(song: Song, partId: string, bar: number, beatIdx: number, string?: number) {
+  const part = partOf(song, partId);
+  const beat = part.bars[bar]?.beats[beatIdx];
+  if (!beat) return;
+  beat.notes = string === undefined ? [] : beat.notes.filter((n) => n.string !== string);
+  autoName(part, beat);
+}
+
 /** Delete: note on the cursor string → chord name → the beat itself. */
 export function deleteAtCursor(song: Song, c: Cursor): Cursor {
   const part = partOf(song, c.partId);
@@ -318,6 +381,69 @@ export function insertBeatBefore(song: Song, c: Cursor, opts: EntryOpts): Cursor
   return c;
 }
 
+/* ---------------------------------------------------------------- repeats */
+
+/** Adds a repeat over bars a..b (any order), replacing repeats it overlaps. */
+export function setRepeat(song: Song, a: number, b: number, times: number) {
+  const start = Math.max(0, Math.min(a, b));
+  const end = Math.min(barCount(song) - 1, Math.max(a, b));
+  const reps = (song.repeats ?? []).filter((r) => r.end < start || r.start > end);
+  reps.push({ start, end, times: Math.max(2, Math.min(16, Math.round(times))) });
+  song.repeats = reps.sort((x, y) => x.start - y.start);
+}
+
+export function removeRepeat(song: Song, bar: number) {
+  song.repeats = (song.repeats ?? []).filter((r) => bar < r.start || bar > r.end);
+}
+
+export const repeatAt = (song: Song, bar: number) => (song.repeats ?? []).find((r) => bar >= r.start && bar <= r.end) ?? null;
+
+/** Keeps repeats pointing at the same music when bars are inserted (+1) or deleted (-1) at `at`. */
+function shiftRepeats(song: Song, at: number, delta: 1 | -1) {
+  const out: NonNullable<Song['repeats']> = [];
+  for (const r of song.repeats ?? []) {
+    let { start, end } = r;
+    if (delta === 1) {
+      if (start >= at) start++;
+      if (end >= at) end++;
+    } else {
+      if (at < start) start--;
+      if (at <= end) end--;
+    }
+    if (end >= start) out.push({ ...r, start, end });
+  }
+  song.repeats = out;
+}
+
+/**
+ * The order bars actually play in, with repeats expanded, starting at `fromBar`
+ * (first time through). E.g. bars 0-3 with a ×2 repeat on 1-2 → 0 1 2 1 2 3.
+ */
+export function playOrder(song: Song, fromBar = 0): number[] {
+  const n = barCount(song);
+  const order: number[] = [];
+  for (let i = 0; i < n; ) {
+    const r = (song.repeats ?? []).find((x) => x.start === i);
+    if (r) {
+      for (let k = 0; k < r.times; k++) for (let b = r.start; b <= r.end; b++) order.push(b);
+      i = r.end + 1;
+    } else order.push(i++);
+  }
+  const at = order.indexOf(fromBar);
+  return at < 0 ? order : order.slice(at);
+}
+
+/* --------------------------------------------------------------- sections */
+
+/** Next free name for a section: Verse, then Verse 2, Verse 3… */
+export function sectionName(song: Song, base: string, bar: number) {
+  const others = song.markers.filter((m) => m.bar !== bar).map((m) => m.label);
+  if (!others.some((l) => l === base || l.startsWith(base + ' '))) return base;
+  let n = 2;
+  while (others.includes(`${base} ${n}`)) n++;
+  return `${base} ${n}`;
+}
+
 export function setMarker(song: Song, bar: number, label: string) {
   song.markers = song.markers.filter((m) => m.bar !== bar);
   if (label.trim()) song.markers.push({ bar, label: label.trim() });
@@ -342,5 +468,6 @@ export function repairSong(song: Song): Song {
   const n = Math.max(1, ...song.parts.map((p) => p.bars.length));
   for (const p of song.parts) while (p.bars.length < n) p.bars.push(emptyBar(song, p.kind));
   song.markers ??= [];
+  song.repeats ??= [];
   return song;
 }

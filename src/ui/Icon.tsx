@@ -24,6 +24,9 @@ const P: Record<string, string> = {
   layers: 'm12 4 9 5-9 5-9-5zM3 14l9 5 9-5',
   tap: 'M9 11V5.5a1.5 1.5 0 0 1 3 0V11m0-1.5a1.5 1.5 0 0 1 3 0V11m0-.5a1.5 1.5 0 0 1 3 0v3.5a6 6 0 0 1-6 6h-.6a5 5 0 0 1-4-2L4.5 14a1.6 1.6 0 0 1 2.4-2L9 14M4 4.5 6 6M15 4.5 13 6',
   minus: 'M5 12h14',
+  repeat: 'M4 9h12l-3-3M20 15H8l3 3M4 9v2M20 15v-2',
+  audio: 'M9 18V6l10-2v12M9 18a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0zM19 16a2.5 2.5 0 1 1-5 0 2.5 2.5 0 0 1 5 0z',
+  loop: 'M17 2l3 3-3 3M4 11V9a4 4 0 0 1 4-4h12M7 22l-3-3 3-3M20 13v2a4 4 0 0 1-4 4H4',
 };
 
 export function Icon({ name, size = 16 }: { name: keyof typeof P | string; size?: number }) {

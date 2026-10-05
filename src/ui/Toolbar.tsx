@@ -1,12 +1,23 @@
 import { useState } from 'react';
 import { useStore, focusedPart } from '../state/store';
 import type { Dur } from '../model/types';
-import { deleteAtCursor, deleteBar, duplicateBar, insertBar, insertBeatBefore, setBeatDuration, setMarker, setRest } from '../model/song';
+import { deleteAtCursor, deleteBar, duplicateBar, insertBar, insertBeatBefore, setBeatDuration, removeRepeat, repeatAt, sectionName, setMarker, setRepeat, setRest, techTarget, toggleTechnique } from '../model/song';
+import type { Technique } from '../model/types';
 import { DurGlyph, Icon } from './Icon';
 
 const DURS: Dur[] = [1, 2, 4, 8, 16, 32];
 const DUR_NAME: Record<number, string> = { 1: 'Whole', 2: 'Half', 4: 'Quarter', 8: 'Eighth', 16: 'Sixteenth', 32: '32nd' };
-const SECTIONS = ['Intro', 'Verse', 'Pre', 'Chorus', 'Bridge', 'Solo', 'Outro'];
+const TECHS: { id: Technique; label: string; title: string }[] = [
+  { id: 'bend1', label: 'b½', title: 'Bend a half step' },
+  { id: 'bend2', label: 'b1', title: 'Bend a whole step (full)' },
+  { id: 'bend3', label: 'b1½', title: 'Bend 1½ steps' },
+  { id: 'h', label: 'H', title: 'Hammer-on to the next note on this string' },
+  { id: 'p', label: 'P', title: 'Pull-off to the next note on this string' },
+  { id: 'slideUp', label: '/', title: 'Slide up into the next note' },
+  { id: 'slideDown', label: '\\', title: 'Slide down into the next note' },
+  { id: 'vibrato', label: '~', title: 'Vibrato' },
+];
+const SECTIONS = ['Intro', 'Verse', 'Pre-chorus', 'Chorus', 'Bridge', 'Solo', 'Outro'];
 
 export function Toolbar() {
   const dur = useStore((s) => s.dur);
@@ -19,8 +30,15 @@ export function Toolbar() {
   const part = useStore(focusedPart);
   const { edit, set, undo, redo } = useStore.getState();
   const [sec, setSec] = useState(false);
+  const [rep, setRep] = useState(false);
   const marker = song.markers.find((m) => m.bar === cursor.bar);
+  const repeat = repeatAt(song, cursor.bar);
+  // the section the cursor is in: last marker at or before this bar
+  const inSection = [...song.markers].reverse().find((m) => m.bar <= cursor.bar) ?? null;
+  const sectionStart = inSection ? inSection.bar : null;
+  const sectionLabel = inSection?.label ?? '';
   const opts = { dur, dotted, stack };
+  const target = techTarget(song, cursor);
 
   const pickDur = (d: Dur) => {
     set({ dur: d });
@@ -62,6 +80,30 @@ export function Toolbar() {
       </div>
 
       {part.kind === 'tab' && (
+        <div className="tgroup" role="group" aria-label="Technique for the last note">
+          {TECHS.map((tq) => {
+            const n = target?.note;
+            const on =
+              !!n &&
+              (tq.id.startsWith('bend') ? n.bend === Number(tq.id.slice(4)) : tq.id === 'h' || tq.id === 'p' ? n.legato === tq.id
+                : tq.id === 'slideUp' ? n.slide === 'up' : tq.id === 'slideDown' ? n.slide === 'down' : !!n.vibrato);
+            return (
+              <button
+                key={tq.id}
+                className={'tool tool-text tool-tech' + (on ? ' on' : '')}
+                disabled={!target}
+                aria-pressed={on}
+                title={target ? `${tq.title} (on the ${target.beat === cursor.beat && target.bar === cursor.bar ? 'selected' : 'last'} note)` : 'Enter a note first, then mark it'}
+                onClick={() => edit((s, c) => (toggleTechnique(s, c, tq.id), c))}
+              >
+                {tq.label}
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {part.kind === 'tab' && (
         <div className="tgroup">
           <button className={'tool tool-text' + (stack ? ' on' : '')} aria-pressed={stack} onClick={() => set({ stack: !stack })} title="Stack notes on one beat to build a chord">
             Stack
@@ -90,20 +132,67 @@ export function Toolbar() {
           <Icon name="trash" />
         </button>
         <div className="section-pick">
-          <button className={'tool tool-text' + (marker ? ' on' : '')} onClick={() => setSec(!sec)} aria-expanded={sec} title="Mark a section">
+          <button className={'tool tool-text' + (marker ? ' on' : '')} onClick={() => (setSec(!sec), setRep(false))} aria-expanded={sec} title="Start a section (Verse, Chorus…) at this bar">
             <Icon name="flag" size={14} /> {marker?.label ?? 'Section'}
           </button>
           {sec && (
             <div className="popover">
+              <div className="pop-title">Section starting at bar {cursor.bar + 1}</div>
               {SECTIONS.map((s) => (
-                <button key={s} className="chip" onClick={() => (edit((d) => setMarker(d, cursor.bar, s)), setSec(false))}>
+                <button key={s} className="chip" onClick={() => (edit((d) => setMarker(d, cursor.bar, sectionName(d, s, cursor.bar))), setSec(false))}>
                   {s}
                 </button>
               ))}
               {marker && (
                 <button className="chip chip-quiet" onClick={() => (edit((d) => setMarker(d, cursor.bar, '')), setSec(false))}>
-                  Clear
+                  Remove
                 </button>
+              )}
+            </div>
+          )}
+        </div>
+        <div className="section-pick">
+          <button className={'tool tool-text' + (repeat ? ' on' : '')} onClick={() => (setRep(!rep), setSec(false))} aria-expanded={rep} title="Repeat bars (e.g. play the verse chords 4 times)">
+            <Icon name="repeat" size={14} /> {repeat ? `×${repeat.times}` : 'Repeat'}
+          </button>
+          {rep && (
+            <div className="popover popover-wide">
+              {repeat ? (
+                <>
+                  <div className="pop-title">
+                    Bars {repeat.start + 1}–{repeat.end + 1} play {repeat.times} times
+                  </div>
+                  <div className="stepper">
+                    <button className="icon-btn" aria-label="Fewer times" disabled={repeat.times <= 2} onClick={() => edit((d) => setRepeat(d, repeat.start, repeat.end, repeat.times - 1))}>
+                      <Icon name="minus" size={14} />
+                    </button>
+                    <output>×{repeat.times}</output>
+                    <button className="icon-btn" aria-label="More times" onClick={() => edit((d) => setRepeat(d, repeat.start, repeat.end, repeat.times + 1))}>
+                      <Icon name="plus" size={14} />
+                    </button>
+                    <button className="chip chip-quiet" onClick={() => (edit((d) => removeRepeat(d, cursor.bar)), setRep(false))}>
+                      Remove repeat
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="pop-title">Repeat…</div>
+                  <button className="chip" onClick={() => (edit((d) => setRepeat(d, cursor.bar, cursor.bar, 2)), setRep(false))}>
+                    Bar {cursor.bar + 1} ×2
+                  </button>
+                  {sectionStart !== null && sectionStart < cursor.bar && (
+                    <button className="chip" onClick={() => (edit((d) => setRepeat(d, sectionStart, cursor.bar, 2)), setRep(false))}>
+                      {sectionLabel} (bars {sectionStart + 1}–{cursor.bar + 1}) ×2
+                    </button>
+                  )}
+                  {cursor.bar > 0 && (
+                    <button className="chip" onClick={() => (edit((d) => setRepeat(d, Math.max(0, cursor.bar - 3), cursor.bar, 2)), setRep(false))}>
+                      Last 4 bars ×2
+                    </button>
+                  )}
+                  <div className="pop-hint">Then use + / − to set how many times.</div>
+                </>
               )}
             </div>
           )}

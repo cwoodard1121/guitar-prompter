@@ -43,6 +43,68 @@ export function quantize(taps: number[], secPerTick: number, grid: number): numb
   return [...seen].sort((a, b) => a - b);
 }
 
+/** A tapped note in ticks; `end` null = a quick tap that lasts until the next note. */
+export interface TapNote {
+  onset: number;
+  end: number | null;
+}
+
+/** A raw tap in seconds from the first downbeat; `up` null = still held / never released. */
+export interface RawTap {
+  down: number;
+  up: number | null;
+}
+
+/**
+ * Snaps presses to the grid. Holding a press (longer than `holdSec`) sets the
+ * note's length; a quick tap lets the note ring until the next one, so tapping
+ * even eighths still gives plain eighths. Duplicates on one grid point collapse.
+ */
+export function quantizeTaps(taps: RawTap[], secPerTick: number, grid: number, holdSec = 0.18): TapNote[] {
+  const snap = (sec: number) => Math.round(sec / secPerTick / grid) * grid;
+  const byOnset = new Map<number, TapNote>();
+  for (const t of taps) {
+    if (t.down < -grid * secPerTick * 0.5) continue; // early taps during the count-in
+    const onset = Math.max(0, snap(t.down));
+    const held = t.up === null ? null : t.up - t.down;
+    const end = held !== null && held >= holdSec ? Math.max(onset + grid, snap(t.up!)) : null;
+    if (!byOnset.has(onset)) byOnset.set(onset, { onset, end });
+  }
+  return [...byOnset.values()].sort((a, b) => a.onset - b.onset);
+}
+
+/**
+ * Turns tapped notes into bars: each note becomes an empty "rhythm slot"
+ * (no frets yet, not a rest) for its held length, and gaps become rests.
+ * Notes never cross bar lines.
+ */
+export function notesToBars(notes: TapNote[], barTicks: number, bars: number): Bar[] {
+  const out: Bar[] = [];
+  for (let b = 0; b < bars; b++) {
+    const start = b * barTicks;
+    const inBar = notes.filter((n) => n.onset >= start && n.onset < start + barTicks).map((n) => ({
+      onset: n.onset - start,
+      end: n.end === null ? null : n.end - start,
+    }));
+    if (!inBar.length) {
+      out.push({ beats: [] });
+      continue;
+    }
+    const beats: Beat[] = [];
+    const span = (ticks: number, kind: 'slot' | 'rest') =>
+      splitTicks(ticks).forEach((s, i) => beats.push(newBeat(s.dur, { dotted: s.dotted, rest: kind === 'rest' || i > 0 })));
+    if (inBar[0].onset > 0) span(inBar[0].onset, 'rest');
+    inBar.forEach((n, i) => {
+      const next = inBar[i + 1]?.onset ?? barTicks;
+      const len = n.end === null ? next - n.onset : Math.max(1, Math.min(n.end, next) - n.onset);
+      span(len, 'slot');
+      if (n.onset + len < next) span(next - n.onset - len, 'rest');
+    });
+    out.push({ beats });
+  }
+  return out;
+}
+
 /**
  * Turns note onsets (ticks from the first recorded bar) into bars of beats.
  * Each onset starts an empty "rhythm slot" (no notes yet, not a rest) that lasts

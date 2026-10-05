@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { barCount, cursorNeedsBar, newSong, normalizeCursor, placeNote } from './song';
+import { barCount, cursorNeedsBar, deleteBar, insertBar, newSong, normalizeCursor, placeNote, playOrder, sectionName, setMarker, setRepeat, toggleTechnique } from './song';
 import { onsetsToBars } from './rhythm';
 import type { Cursor, Song } from './types';
 
@@ -39,6 +39,62 @@ describe('note entry', () => {
     expect(cursorNeedsBar(s, probe)).toBe(tab.bars[last].beats.length > 0);
     normalizeCursor(s, probe, false);
     expect(JSON.stringify(s)).toBe(before);
+  });
+});
+
+describe('techniques', () => {
+  it('a bend lands on the note just entered, even though the cursor moved on', () => {
+    const s = newSong();
+    let c = tabCursor(s);
+    c = normalizeCursor(s, placeNote(s, c, 1, 7, eighths)); // B string, 7th fret; cursor moves to next beat
+    toggleTechnique(s, c, 'bend2');
+    const tab = s.parts.find((p) => p.kind === 'tab')!;
+    expect(tab.bars[0].beats[0].notes[0].bend).toBe(2);
+    toggleTechnique(s, c, 'bend2'); // toggles off
+    expect(tab.bars[0].beats[0].notes[0].bend).toBeUndefined();
+  });
+
+  it('hammer-on and slide replace each other', () => {
+    const s = newSong();
+    let c = tabCursor(s);
+    c = normalizeCursor(s, placeNote(s, c, 2, 5, eighths));
+    toggleTechnique(s, c, 'h');
+    toggleTechnique(s, c, 'slideUp');
+    const n = s.parts.find((p) => p.kind === 'tab')!.bars[0].beats[0].notes[0];
+    expect(n.slide).toBe('up');
+    expect(n.legato).toBeUndefined();
+  });
+});
+
+describe('repeats and sections', () => {
+  it('expands repeats into play order, from any bar', () => {
+    const s = newSong(); // 8 bars
+    setRepeat(s, 1, 2, 3);
+    expect(playOrder(s)).toEqual([0, 1, 2, 1, 2, 1, 2, 3, 4, 5, 6, 7]);
+    expect(playOrder(s, 2)).toEqual([2, 1, 2, 1, 2, 3, 4, 5, 6, 7]);
+  });
+
+  it('repeats follow the music when bars are inserted or deleted', () => {
+    const s = newSong();
+    setRepeat(s, 2, 4, 2);
+    insertBar(s, 0);
+    expect(s.repeats).toEqual([{ start: 3, end: 5, times: 2 }]);
+    deleteBar(s, 4);
+    expect(s.repeats).toEqual([{ start: 3, end: 4, times: 2 }]);
+  });
+
+  it('a new repeat replaces ones it overlaps', () => {
+    const s = newSong();
+    setRepeat(s, 0, 3, 2);
+    setRepeat(s, 2, 5, 4);
+    expect(s.repeats).toEqual([{ start: 2, end: 5, times: 4 }]);
+  });
+
+  it('numbers repeated section names', () => {
+    const s = newSong();
+    setMarker(s, 0, sectionName(s, 'Verse', 0));
+    setMarker(s, 4, sectionName(s, 'Verse', 4));
+    expect(s.markers.map((m) => m.label)).toEqual(['Verse', 'Verse 2']);
   });
 });
 
