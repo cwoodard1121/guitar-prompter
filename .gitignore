@@ -1,9 +1,17 @@
 node_modules
 dist
+dist-single
 .env
-.env.local
-.env.*.local
+.env.*
+!.env.example
 *.log
 .DS_Store
-songs.json
-chord-cache.json
+
+# Isolated Claude Code config dir (holds credentials) + its launcher
+.claude/
+claude-guitarprompter.cmd
+
+# Impeccable scratch
+.impeccable/mocks/
+.impeccable/review/
+.impeccable/config.local.json
