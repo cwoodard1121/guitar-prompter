@@ -78,7 +78,7 @@ export function Root() {
         backLabel={set ? `Back to ${set.name || 'setlist'}` : 'All songs'}
         actions={
           <a className="btn btn-small" href={`#/song/${encodeURIComponent(song.id)}`}>
-            <Icon name="gear" size={14} /> Edit
+            <Icon name="gear" size={14} /> <span className="btn-label">Edit</span>
           </a>
         }
       />

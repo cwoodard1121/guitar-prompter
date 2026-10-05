@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { useStore, focusedPart } from '../state/store';
 import { Icon } from './Icon';
-import { SongMenu } from './SongMenu';
+import { Menu, SongMenu } from './SongMenu';
 import { SYNC_LABEL, useSyncState } from './Account';
 
 interface Props {
@@ -34,6 +34,8 @@ export function TopBar({ playing, metronome, onPlay, onMetronome }: Props) {
   const sync = useSyncState();
   const anyCapo = song.parts.some((p) => p.capo > 0);
 
+  const practiceOn = speed !== 1 || loopBars > 0;
+
   return (
     <header className="topbar">
       <a className="icon-btn back" href="#/" aria-label="All songs" title="All songs">
@@ -45,6 +47,7 @@ export function TopBar({ playing, metronome, onPlay, onMetronome }: Props) {
           value={song.title}
           placeholder="Song title"
           aria-label="Song title"
+          style={{ width: `${Math.min(28, Math.max(7, song.title.length + 1.5))}ch` }}
           onChange={(e) => edit((d) => void (d.title = e.target.value))}
         />
         <input
@@ -52,12 +55,13 @@ export function TopBar({ playing, metronome, onPlay, onMetronome }: Props) {
           value={song.artist}
           placeholder="Artist"
           aria-label="Artist"
+          style={{ width: `${Math.min(22, Math.max(6, song.artist.length + 2))}ch` }}
           onChange={(e) => edit((d) => void (d.artist = e.target.value))}
         />
       </div>
 
       <div className="transport">
-        <button className={'play' + (playing ? ' is-playing' : '')} onClick={onPlay} aria-label={playing ? 'Stop' : 'Play from cursor'}>
+        <button className={'play' + (playing ? ' is-playing' : '')} onClick={onPlay} aria-label={playing ? 'Stop' : 'Play from cursor'} title={playing ? 'Stop (Space)' : 'Play from cursor (Space)'}>
           <Icon name={playing ? 'stop' : 'play'} size={16} />
         </button>
         <label className="tempo" title="Tempo (BPM)">
@@ -80,40 +84,60 @@ export function TopBar({ playing, metronome, onPlay, onMetronome }: Props) {
             <option key={t}>{t}</option>
           ))}
         </select>
-        <button className="icon-btn tap-tempo" onClick={tapTempo} title="Tap tempo: tap 4+ times in time">
-          Tap
-        </button>
-        <select className="speed" aria-label="Playback speed" title="Slow down (the recording keeps its pitch)" value={speed} onChange={(e) => set({ speed: Number(e.target.value) })}>
-          {[1, 0.9, 0.75, 0.6, 0.5].map((v) => (
-            <option key={v} value={v}>
-              {Math.round(v * 100)}%
-            </option>
-          ))}
-        </select>
-        <select className={'loop' + (loopBars ? ' on' : '')} aria-label="Loop" title="Loop bars from the cursor while playing" value={loopBars} onChange={(e) => set({ loopBars: Number(e.target.value) })}>
-          <option value={0}>No loop</option>
-          <option value={1}>Loop 1 bar</option>
-          <option value={2}>Loop 2 bars</option>
-          <option value={4}>Loop 4 bars</option>
-        </select>
-        <button className={'icon-btn' + (metronome ? ' on' : '')} onClick={onMetronome} aria-pressed={metronome} title="Metronome">
+        <button className={'icon-btn' + (metronome ? ' on' : '')} onClick={onMetronome} aria-pressed={metronome} aria-label="Metronome" title="Metronome">
           <Icon name="metronome" size={16} />
         </button>
+        <Menu label="Practice: tap tempo, slow down, loop" icon="loop" text={practiceOn ? `${Math.round(speed * 100)}%${loopBars ? ` · ${loopBars} bar${loopBars > 1 ? 's' : ''}` : ''}` : 'Practice'} align="right" active={practiceOn}>
+          {() => (
+            <div className="practice">
+              <div className="practice-row">
+                <span className="pal-key">Tempo</span>
+                <button className="btn btn-small" onClick={tapTempo}>
+                  Tap in time
+                </button>
+                <span className="practice-hint">{song.tempo} bpm</span>
+              </div>
+              <div className="practice-row">
+                <span className="pal-key">Speed</span>
+                <div className="seg" role="radiogroup" aria-label="Playback speed">
+                  {[1, 0.9, 0.75, 0.6, 0.5].map((v) => (
+                    <button key={v} role="radio" aria-checked={speed === v} className={speed === v ? 'on' : ''} onClick={() => set({ speed: v })}>
+                      {Math.round(v * 100)}%
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="practice-row">
+                <span className="pal-key">Loop</span>
+                <div className="seg" role="radiogroup" aria-label="Loop bars from the cursor">
+                  {[0, 1, 2, 4].map((v) => (
+                    <button key={v} role="radio" aria-checked={loopBars === v} className={loopBars === v ? 'on' : ''} onClick={() => set({ loopBars: v })}>
+                      {v ? `${v} bar${v > 1 ? 's' : ''}` : 'Off'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <p className="practice-hint">Slowing down keeps the recording's pitch. Loops start at the cursor.</p>
+            </div>
+          )}
+        </Menu>
       </div>
 
       <div className="views">
-        <div className="seg" role="radiogroup" aria-label="Capo view" title={anyCapo ? '' : 'Set a capo on a part to use this'}>
-          <button className={capoView === 'shapes' ? 'on' : ''} role="radio" aria-checked={capoView === 'shapes'} onClick={() => set({ capoView: 'shapes' })}>
-            With capo
-          </button>
-          <button className={capoView === 'concert' ? 'on' : ''} role="radio" aria-checked={capoView === 'concert'} onClick={() => set({ capoView: 'concert' })}>
-            No capo
-          </button>
-        </div>
-        <button className={'icon-btn' + (focusOnly ? ' on' : '')} onClick={() => set({ focusOnly: !focusOnly })} aria-pressed={focusOnly} title={focusOnly ? 'Show all parts' : `Show only ${part.name}`}>
+        {anyCapo && (
+          <div className="seg" role="radiogroup" aria-label="Capo view">
+            <button className={capoView === 'shapes' ? 'on' : ''} role="radio" aria-checked={capoView === 'shapes'} onClick={() => set({ capoView: 'shapes' })}>
+              With capo
+            </button>
+            <button className={capoView === 'concert' ? 'on' : ''} role="radio" aria-checked={capoView === 'concert'} onClick={() => set({ capoView: 'concert' })}>
+              No capo
+            </button>
+          </div>
+        )}
+        <button className={'icon-btn' + (focusOnly ? ' on' : '')} onClick={() => set({ focusOnly: !focusOnly })} aria-pressed={focusOnly} aria-label={focusOnly ? 'Show all parts' : `Show only ${part.name}`} title={focusOnly ? 'Show all parts' : `Show only ${part.name}`}>
           <Icon name={focusOnly ? 'eye' : 'layers'} size={16} />
         </button>
-        <span className={'sync-dot sync-' + sync} title={sync === 'off' ? 'Saved on this device only. Sign in from the library to sync' : SYNC_LABEL[sync]} />
+        <span className={'sync-dot sync-' + sync} role="img" aria-label={SYNC_LABEL[sync]} title={sync === 'off' ? 'Saved on this device only. Sign in from the library to sync' : SYNC_LABEL[sync]} />
         <a className="icon-btn" href={`#/play/${encodeURIComponent(song.id)}`} aria-label="Play on stage" title="Play on stage (big, scrolling view)">
           <Icon name="stage" size={16} />
         </a>

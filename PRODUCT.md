@@ -8,7 +8,7 @@ web
 
 ## Stack
 
-React 19 + TypeScript + Vite, Zustand for state. VexFlow renders standard notation and tablature. Web Audio for playback. Static site. localStorage caching now, Supabase for sync later (backend/API planned after the tab editor ships). Chosen by Cameron on 2026-10-05; the previous Vue app is discarded entirely — no code, routes or structure carried over.
+React 19 + TypeScript + Vite, Zustand for state. VexFlow renders standard notation and tablature. Web Audio for playback. Static site. localStorage caching plus Supabase (RLS, no server of our own) for sync, recordings, setlists and share links. Chosen by Cameron on 2026-10-05; the previous Vue app is discarded entirely — no code, routes or structure carried over.
 
 ## Users
 
@@ -33,7 +33,8 @@ Songsterr-grade visual tab (notation + tab, clicky, readable) combined with a fa
 ## Capabilities and Constraints
 
 - v1 (tab editor): multiple parts per song, standard notation + tab rendered together, note entry by clicking the staff or a fretboard, durations, rests, chord names above beats via a chord palette, capo and tuning per part, tempo/time signature, playback, undo/redo, local autosave, export to PDF/print and text tab.
-- Later: transcribe mode with audio (tap chords while a song plays), teleprompter, setlists, accounts + Supabase sync, sharing.
+- Shipped since v1: library, recording import + sync, stage teleprompter, setlists, accounts + Supabase sync, read-only share links.
+- Later: synced lyrics, mic follow, AI assist, community.
 - Undecided: rhythm notation depth (tuplets, ties, techniques such as bends/slides/hammer-ons) beyond the basics; Guitar Pro / MusicXML import/export.
 
 ## Product Principles

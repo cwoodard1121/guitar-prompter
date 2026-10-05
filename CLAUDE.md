@@ -11,7 +11,14 @@ Guitar workspace for transcribing and performing songs: a visual tab + chord edi
 ## Stack
 React 19 + TypeScript + Vite, Zustand, VexFlow 4 (notation + tab), Web Audio (Karplus–Strong synth), Vitest. Static site.
 
-Songs persist to localStorage plus a pluggable `RemoteStore` (`src/storage/storage.ts`). The remote is Supabase, called straight from the browser with RLS on the `guitar_songs` table (`supabase/migrations`). There's no server. Sync is newest-wins with tombstones (`src/storage/sync.ts`, unit tested). Keys go in `.env.local` (see `.env.example`). Single user for now, but RLS on `owner_id` means more users would work without changes.
+Songs and setlists persist to localStorage plus a pluggable `RemoteStore` (`src/storage/storage.ts`, one `collection<T>` engine for both). The remote is Supabase, called straight from the browser with RLS (`supabase/migrations`, apply them in order). There's no server:
+- `guitar_songs`, `guitar_setlists`: owner-only rows; sync is newest-wins with tombstones (`src/storage/sync.ts`, unit tested).
+- Storage bucket `guitar-audio`: recordings at `{uid}/{songId}`, revisioned so replaced files refetch (`audioSync.ts`).
+- `guitar_shares` + `get_shared_song(token)`: read-only share links; anon can only call that function.
+
+Keys go in `.env.local` (see `.env.example`; `VITE_PUBLIC_URL` makes share links point at a hosted copy). Sign-in is email link (PKCE) or password.
+
+Routes are hash-based (`src/ui/router.ts`): `#/` library, `#/sets`, `#/set/:id`, `#/song/:id` editor, `#/play/:id[?set=]` stage, `#/s/:token` shared song.
 
 ## Commands
 ```bash

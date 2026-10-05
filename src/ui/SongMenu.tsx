@@ -8,7 +8,23 @@ import { toast } from './Toaster';
 import { ShareDialog } from './ShareDialog';
 
 /** A small popover menu anchored to its trigger. Closes on outside click or Escape. */
-export function Menu({ label, icon = 'more', align = 'right', children }: { label: string; icon?: string; align?: 'left' | 'right'; children: (close: () => void) => ReactNode }) {
+export function Menu({
+  label,
+  icon = 'more',
+  text,
+  active,
+  align = 'right',
+  children,
+}: {
+  label: string;
+  icon?: string;
+  /** Visible text next to the icon (the trigger becomes a labeled button). */
+  text?: string;
+  /** Highlights the trigger (e.g. a setting inside is on). */
+  active?: boolean;
+  align?: 'left' | 'right';
+  children: (close: () => void) => ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -24,8 +40,16 @@ export function Menu({ label, icon = 'more', align = 'right', children }: { labe
   }, [open]);
   return (
     <div className="menu-anchor" ref={ref}>
-      <button className={'icon-btn' + (open ? ' on' : '')} aria-label={label} title={label} aria-haspopup="menu" aria-expanded={open} onClick={() => setOpen(!open)}>
+      <button
+        className={'icon-btn' + (text ? ' icon-btn-text' : '') + (open ? ' on' : '') + (active ? ' is-active' : '')}
+        aria-label={label}
+        title={label}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        onClick={() => setOpen(!open)}
+      >
         <Icon name={icon} size={16} />
+        {text && <span>{text}</span>}
       </button>
       {open && (
         <div className={'menu menu-' + align} role="menu">

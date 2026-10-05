@@ -353,7 +353,7 @@ export function Stage({ song, actions, backHref = '#/', backLabel = 'All songs',
               <Icon name="textUp" size={16} />
             </button>
           </div>
-          <button className="icon-btn" aria-label="Full screen" title="Full screen (F)" onClick={fullscreen}>
+          <button className="icon-btn stage-fs" aria-label="Full screen" title="Full screen (F)" onClick={fullscreen}>
             <Icon name="fullscreen" size={16} />
           </button>
           {actions}
