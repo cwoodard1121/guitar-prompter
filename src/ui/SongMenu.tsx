@@ -61,6 +61,9 @@ export function SongMenu({ song, inEditor = false }: { song: Song; inEditor?: bo
               Open in editor
             </MenuItem>
           )}
+          <MenuItem icon="stage" onClick={() => (close(), navigate({ name: 'play', id: song.id }))}>
+            Play on stage
+          </MenuItem>
           <MenuItem
             icon="copy"
             onClick={() => {

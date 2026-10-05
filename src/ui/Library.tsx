@@ -209,6 +209,9 @@ export function Library() {
                   <span className="song-when">{ago(s.updatedAt)}</span>
                 </a>
                 <div className="song-actions">
+                  <a className="icon-btn" href={`#/play/${encodeURIComponent(s.id)}`} aria-label={`Play ${s.title || 'Untitled'} on stage`} title="Play on stage">
+                    <Icon name="stage" size={16} />
+                  </a>
                   <SongMenu song={s} />
                 </div>
               </li>
