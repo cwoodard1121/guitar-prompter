@@ -13,17 +13,19 @@ let url: string | null = null;
 let loadedFor: string | null = null;
 let startTimer: ReturnType<typeof setTimeout> | undefined;
 
-export async function loadTrack(songId: string | null): Promise<boolean> {
-  if (loadedFor === songId && el) return true;
+/** Loads the song's recording from this device. `rev` picks up a replaced file under the same song. */
+export async function loadTrack(songId: string | null, rev?: string): Promise<boolean> {
+  const key = songId && `${songId}:${rev ?? ''}`;
+  if (loadedFor === key && el) return true;
   unloadTrack();
   if (!songId) return false;
-  const blob = await getAudio(songId);
-  if (!blob) return false;
-  url = URL.createObjectURL(blob);
+  const local = await getAudio(songId);
+  if (!local || (rev && local.rev !== rev)) return false;
+  url = URL.createObjectURL(local.blob);
   el = new Audio(url);
   el.preload = 'auto';
   el.preservesPitch = true;
-  loadedFor = songId;
+  loadedFor = key;
   return true;
 }
 
@@ -46,7 +48,7 @@ export function audioTimeOfBar(song: Song, bar: number): number {
 
 /** Starts the recording so it lines up with a playback that begins at `fromBar`. */
 export function startTrack(song: Song, fromBar: number, handle: PlayHandle, ctx: { currentTime: number }, speed: number) {
-  if (!el || !song.audio || loadedFor !== song.id) return;
+  if (!el || !song.audio || !loadedFor?.startsWith(song.id + ':')) return;
   const a = el;
   a.pause();
   a.playbackRate = speed;

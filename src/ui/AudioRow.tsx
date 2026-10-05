@@ -1,8 +1,15 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../state/store';
+import { uid } from '../model/song';
 import { deleteAudio, putAudio } from '../storage/audioStore';
+import { audioSyncOn, ensureLocalAudio, removeRemoteAudio, uploadIfNeeded, useAudioBusy } from '../storage/audioSync';
+import { useAccount } from '../storage/useAccount';
 import { loadTrack, trackElement, unloadTrack } from '../audio/track';
 import { Icon } from './Icon';
+import { toast } from './Toaster';
+
+const MAX_SYNC = 50 * 1024 * 1024;
+const mb = (n?: number) => (!n ? '' : n < 1048576 ? `${Math.max(1, Math.round(n / 1024))} KB` : `${(n / 1048576).toFixed(n < 10485760 ? 1 : 0)} MB`);
 
 const fmt = (s: number) => {
   const sign = s < 0 ? '-' : '';
@@ -23,23 +30,42 @@ export function AudioRow() {
   const song = useStore((s) => s.song);
   const synthOn = useStore((s) => s.synthOn);
   const { edit, set } = useStore.getState();
-  const [missing, setMissing] = useState(false);
+  const user = useAccount();
+  const busy = useAudioBusy((b) => b[song.id]);
+  const [state, setState] = useState<'ready' | 'download' | 'signin' | 'missing' | 'error' | 'none'>('none');
   const [finding, setFinding] = useState(false);
   const audio = song.audio;
+  const rev = audio?.rev;
 
   useEffect(() => {
-    if (!audio) return setMissing(false);
-    void loadTrack(song.id).then((ok) => setMissing(!ok));
-  }, [song.id, audio]);
+    if (!audio) return setState('none');
+    let live = true;
+    const s = useStore.getState().song;
+    void ensureLocalAudio(s).then(async (r) => {
+      if (r === 'ready') await loadTrack(s.id, s.audio?.rev);
+      if (live) setState(r);
+    });
+    return () => void (live = false);
+  }, [song.id, !!audio, rev, user?.id]);
 
   async function add() {
     const file = await pickAudio();
     if (!file) return;
-    await putAudio(song.id, file);
+    const next = uid();
+    await putAudio(song.id, file, next);
     unloadTrack();
-    edit((d) => void (d.audio = { name: file.name, offset: d.audio?.offset ?? 0, volume: d.audio?.volume ?? 0.9 }));
-    await loadTrack(song.id);
-    setMissing(false);
+    edit((d) => void (d.audio = { name: file.name, rev: next, size: file.size, uploaded: false, offset: d.audio?.offset ?? 0, volume: d.audio?.volume ?? 0.9 }));
+    await loadTrack(song.id, next);
+    setState('ready');
+    if (file.size > MAX_SYNC) toast(`${mb(file.size)} is over the 50 MB sync limit, so it stays on this device.`, { tone: 'error' });
+    else void uploadIfNeeded(useStore.getState().song);
+  }
+
+  function retry() {
+    useAudioBusy.setState({ [song.id]: undefined });
+    const s = useStore.getState().song;
+    if (state === 'ready') void uploadIfNeeded(s);
+    else void ensureLocalAudio(s).then(async (r) => (r === 'ready' && (await loadTrack(s.id, s.audio?.rev)), setState(r)));
   }
 
   /** Plays the recording from the start; press again the moment bar 1 begins. */
@@ -84,16 +110,41 @@ export function AudioRow() {
           onClick={() => {
             unloadTrack();
             void deleteAudio(song.id);
+            if (audio.uploaded) void removeRemoteAudio(song.id);
             edit((d) => void delete d.audio);
           }}
         >
           <Icon name="trash" size={13} />
         </button>
       </div>
-      {missing ? (
-        <button className="btn btn-small" onClick={add}>
-          File not on this device: add it again
-        </button>
+      {state !== 'ready' ? (
+        <div className="audio-state">
+          {busy === 'downloading' ? (
+            <p>
+              <span className="spinner" aria-hidden="true" /> Getting it from your account…
+            </p>
+          ) : state === 'signin' ? (
+            <p>It's saved in your account. Sign in (library, top right) to get it here.</p>
+          ) : state === 'error' ? (
+            <>
+              <p>Couldn't download the recording.</p>
+              <button className="btn btn-small" onClick={retry}>
+                Try again
+              </button>
+            </>
+          ) : state === 'missing' ? (
+            <>
+              <p>This file is only on the device it was added on. Open the song there while signed in to sync it, or add it here.</p>
+              <button className="btn btn-small" onClick={add}>
+                Add the file here
+              </button>
+            </>
+          ) : (
+            <p>
+              <span className="spinner" aria-hidden="true" /> Loading…
+            </p>
+          )}
+        </div>
       ) : (
         <>
           <div className="audio-line">
@@ -125,6 +176,25 @@ export function AudioRow() {
             <input type="checkbox" checked={synthOn} onChange={(e) => set({ synthOn: e.target.checked })} />
             <span>Hear the tab too</span>
           </label>
+          <div className={'audio-cloud' + (busy === 'error' ? ' is-error' : '')}>
+            <Icon name="cloud" size={13} />
+            {busy === 'uploading' ? (
+              <span>Uploading {mb(audio.size)}…</span>
+            ) : busy === 'error' ? (
+              <>
+                <span>Upload failed</span>
+                <button className="link-btn" onClick={retry}>
+                  Retry
+                </button>
+              </>
+            ) : audio.uploaded ? (
+              <span>In your account{audio.size ? ` · ${mb(audio.size)}` : ''}</span>
+            ) : audioSyncOn() && (audio.size ?? 0) <= MAX_SYNC ? (
+              <span>Waiting to upload</span>
+            ) : (
+              <span>On this device only{(audio.size ?? 0) > MAX_SYNC ? ' (over 50 MB)' : user ? '' : ' · sign in to sync'}</span>
+            )}
+          </div>
         </>
       )}
     </div>

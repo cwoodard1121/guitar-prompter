@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import type { User } from '@supabase/supabase-js';
 import { create } from 'zustand';
-import { supabase, supabaseRemote } from './supabase';
+import { supabase, supabaseAudio, supabaseRemote } from './supabase';
+import { setAudioRemote, uploadPending } from './audioSync';
 import { setRemote, syncNow } from './storage';
 import { useStore } from '../state/store';
 
@@ -21,7 +22,10 @@ export const currentUser = () => useAuth.getState().user;
 /** Runs a sync and applies the merged library to the editor. */
 export async function syncAndApply() {
   const merged = await syncNow();
-  if (merged) useStore.getState().replaceLibrary(merged);
+  if (merged) {
+    useStore.getState().replaceLibrary(merged);
+    void uploadPending();
+  }
 }
 
 /** Keeps songs synced while signed in: now, every minute, on focus and when back online. */
@@ -29,9 +33,11 @@ export function useSync(user: User | null) {
   useEffect(() => {
     if (!supabase || !user) {
       setRemote(null);
+      setAudioRemote(null);
       return;
     }
     setRemote(supabaseRemote(supabase, user.id));
+    setAudioRemote(supabaseAudio(supabase, user.id));
     void syncAndApply();
     const tick = () => void syncAndApply();
     const id = setInterval(tick, 60_000);

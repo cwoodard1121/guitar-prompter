@@ -1,10 +1,16 @@
 /**
  * Audio files (mp3 etc.) live in IndexedDB on this device, keyed by song id.
- * They're too big for localStorage and aren't synced; the song only syncs the
- * track's settings (name, where bar 1 starts, volume).
+ * They're too big for localStorage. When signed in they're also uploaded to
+ * Supabase Storage (see audioSync.ts); `rev` tells which version a copy is.
  */
 const DB = 'gp-audio';
 const STORE = 'tracks';
+
+export interface LocalAudio {
+  blob: Blob;
+  /** Matches song.audio.rev when this is the current file (undefined for files saved before sync existed). */
+  rev?: string;
+}
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -25,6 +31,12 @@ async function run<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => IDBRe
   });
 }
 
-export const putAudio = (songId: string, file: Blob) => run('readwrite', (s) => s.put(file, songId)).then(() => undefined);
-export const getAudio = (songId: string) => run<Blob | undefined>('readonly', (s) => s.get(songId) as IDBRequest<Blob | undefined>).catch(() => undefined);
+export const putAudio = (songId: string, blob: Blob, rev?: string) =>
+  run('readwrite', (s) => s.put({ blob, rev } satisfies LocalAudio, songId)).then(() => undefined);
+
+export const getAudio = (songId: string): Promise<LocalAudio | undefined> =>
+  run<unknown>('readonly', (s) => s.get(songId))
+    .then((v) => (v instanceof Blob ? { blob: v } : (v as LocalAudio | undefined))) // older saves stored the bare Blob
+    .catch(() => undefined);
+
 export const deleteAudio = (songId: string) => run('readwrite', (s) => s.delete(songId)).then(() => undefined).catch(() => undefined);

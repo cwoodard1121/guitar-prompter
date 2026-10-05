@@ -63,9 +63,17 @@ export interface Repeat {
   times: number;
 }
 
-/** An imported recording to tab along with. The file itself stays on the device (IndexedDB). */
+/**
+ * An imported recording to tab along with. The file lives in IndexedDB on each
+ * device and, when signed in, in Supabase Storage so other devices can fetch it.
+ */
 export interface AudioTrack {
   name: string;
+  /** Which file this is; changes when the recording is replaced, so stale copies get refetched. */
+  rev?: string;
+  size?: number;
+  /** A copy is in Supabase Storage. */
+  uploaded?: boolean;
   /** Seconds into the recording where bar 1 starts. */
   offset: number;
   volume: number;
