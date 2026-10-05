@@ -5,8 +5,11 @@ import { pickFile, saveFile } from '../storage/download';
 import { repairSong } from '../model/song';
 import type { Song } from '../model/types';
 import { Icon } from './Icon';
+import { Account } from './Account';
+import type { User } from '@supabase/supabase-js';
 
 interface Props {
+  user: User | null;
   playing: boolean;
   metronome: boolean;
   onPlay: () => void;
@@ -16,7 +19,7 @@ interface Props {
 
 const slug = (s: string) => s.trim().replace(/[^\w\- ]+/g, '').replace(/\s+/g, '-').toLowerCase() || 'song';
 
-export function TopBar({ playing, metronome, onPlay, onMetronome, toast }: Props) {
+export function TopBar({ user, playing, metronome, onPlay, onMetronome, toast }: Props) {
   const song = useStore((s) => s.song);
   const library = useStore((s) => s.library);
   const capoView = useStore((s) => s.capoView);
@@ -25,7 +28,7 @@ export function TopBar({ playing, metronome, onPlay, onMetronome, toast }: Props
   const { edit, set, openSong, createSong, importSong, deleteSong } = useStore.getState();
   const [menu, setMenu] = useState(false);
   const [confirmDel, setConfirmDel] = useState(false);
-  const [sync, setSync] = useState<SyncState>('local');
+  const [sync, setSync] = useState<SyncState>('off');
   const menuRef = useRef<HTMLDivElement>(null);
   const anyCapo = song.parts.some((p) => p.capo > 0);
 
@@ -86,6 +89,9 @@ export function TopBar({ playing, metronome, onPlay, onMetronome, toast }: Props
                 </button>
               ))}
             </div>
+            <div className="menu-sep" />
+            <div className="menu-label">Sync</div>
+            <Account user={user} onDone={(m) => toast(m)} />
             <div className="menu-sep" />
             <button role="menuitem" className="menu-item" onClick={() => (createSong(), setMenu(false))}>
               <Icon name="plus" size={14} /> New song
@@ -175,7 +181,7 @@ export function TopBar({ playing, metronome, onPlay, onMetronome, toast }: Props
         <button className={'icon-btn' + (focusOnly ? ' on' : '')} onClick={() => set({ focusOnly: !focusOnly })} aria-pressed={focusOnly} title={focusOnly ? 'Show all parts' : `Show only ${part.name}`}>
           <Icon name={focusOnly ? 'eye' : 'layers'} size={16} />
         </button>
-        <span className={'sync sync-' + sync} title={{ local: 'Saved in this browser', syncing: 'Syncing…', synced: 'Synced to your account', error: "Couldn't sync — saved in this browser" }[sync]} />
+        <span className={'sync sync-' + sync} title={{ off: 'Saved on this device only. Sign in (song menu) to sync', syncing: 'Syncing…', synced: 'Synced', error: "Couldn't sync — saved in this browser" }[sync]} />
       </div>
     </header>
   );

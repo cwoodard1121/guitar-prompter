@@ -359,3 +359,13 @@ select {
 .tap-beats i.on { background: var(--abalone); }
 .tap-beats i.down.on { background: var(--amber); }
 .tap-row .chip { display: inline-flex; align-items: center; gap: 5px; }
+
+/* ---------------------------------------------------------------- account */
+.acct { display: grid; gap: 6px; padding: 2px 8px 6px; }
+.acct-note { margin: 0; color: var(--pearl-2); font-size: 12px; padding: 2px 8px 4px; }
+.acct .acct-note { padding: 0; }
+.acct-note strong { color: var(--pearl); font-weight: 600; }
+.acct input { height: 30px; padding: 0 9px; border: 1px solid var(--nickel); border-radius: 5px; background: var(--wood-0); }
+.acct input:focus { outline: none; border-color: var(--abalone); }
+.acct-actions { display: flex; gap: 6px; }
+.acct-error { margin: 0; color: var(--danger); font-size: 12px; }

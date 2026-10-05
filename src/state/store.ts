@@ -173,8 +173,9 @@ export const useStore = create<State>((set, get) => ({
   },
 
   deleteSong(id) {
-    deleteLocal(id);
-    void remoteDelete(id);
+    const at = Date.now();
+    deleteLocal(id, at);
+    void remoteDelete(id, at);
     const library = get().library.filter((s) => s.id !== id);
     if (!library.length) library.push(newSong());
     const song = get().song.id === id ? library[0] : get().song;
@@ -183,21 +184,22 @@ export const useStore = create<State>((set, get) => ({
     set({ library, song, cursor: firstCursor(song), past: [], future: [] });
   },
 
+  /** Applies a synced library: keeps the open song (taking the remote copy if it's newer), or moves on if it was deleted elsewhere. */
   replaceLibrary(songs) {
-    const current = songs.find((s) => s.id === get().song.id);
-    const lastId = (() => {
-      try {
-        return localStorage.getItem(LAST);
-      } catch {
-        return null;
-      }
-    })();
-    const song = current ?? songs.find((s) => s.id === lastId) ?? get().song;
-    set({
-      library: songs.length ? songs : [song],
-      song,
-      cursor: song === get().song ? get().cursor : firstCursor(song),
-    });
+    const open = get().song;
+    const synced = songs.find((s) => s.id === open.id);
+    if (synced) {
+      const song = synced.updatedAt === open.updatedAt ? open : synced;
+      set({ library: songs.map((s) => (s.id === song.id ? song : s)), song, cursor: normalizeCursor(song, get().cursor, false) });
+      return;
+    }
+    let next = songs[0];
+    if (!next) {
+      next = newSong();
+      persist(next);
+    }
+    rememberLast(next.id);
+    set({ library: songs.length ? songs : [next], song: next, cursor: firstCursor(next), past: [], future: [] });
   },
 }));
 

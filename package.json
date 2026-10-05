@@ -16,6 +16,7 @@
     "url": "git+https://github.com/cwoodard1121/guitar-prompter.git"
   },
   "dependencies": {
+    "@supabase/supabase-js": "^2.117.2",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "vexflow": "^4.2.5",

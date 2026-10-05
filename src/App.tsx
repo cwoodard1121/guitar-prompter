@@ -11,8 +11,7 @@ import { carryChords, isSlot, onsetsToBars } from './model/rhythm';
 import { TapPanel } from './ui/TapPanel';
 import { identifyChord } from './model/music';
 import { audition, play, type PlayHandle } from './audio/player';
-import { connectRemote } from './storage/storage';
-import { artifactRemote } from './storage/artifactRemote';
+import { useAccount, useSync } from './storage/useAccount';
 import type { Bar, Cursor, Dur } from './model/types';
 
 const DURS: Dur[] = [1, 2, 4, 8, 16, 32];
@@ -34,7 +33,9 @@ export function App() {
   const chordStep = useStore((s) => s.chordStep);
   const capoView = useStore((s) => s.capoView);
   const tapOpen = useStore((s) => s.tapOpen);
-  const { edit, set, setCursor, undo, redo, replaceLibrary } = useStore.getState();
+  const { edit, set, setCursor, undo, redo } = useStore.getState();
+  const user = useAccount();
+  useSync(user);
 
   const [preview, setPreview] = useState<number[] | null>(null);
   const [draft, setDraft] = useState<Map<number, number>>(new Map());
@@ -51,18 +52,6 @@ export function App() {
     toastTimer.current = setTimeout(() => setToastMsg(null), 2600);
   }, []);
 
-  // Sync with the claude.ai artifact store when we're running there.
-  useEffect(() => {
-    let alive = true;
-    void artifactRemote().then(async (r) => {
-      if (!r || !alive) return;
-      const merged = await connectRemote(r);
-      if (merged && alive) replaceLibrary(merged);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [replaceLibrary]);
 
   useEffect(() => setDraft(new Map()), [cursor.partId]);
 
@@ -285,7 +274,7 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar playing={playing} metronome={metronome} onPlay={togglePlay} onMetronome={() => setMetronome(!metronome)} toast={toast} />
+      <TopBar user={user} playing={playing} metronome={metronome} onPlay={togglePlay} onMetronome={() => setMetronome(!metronome)} toast={toast} />
       <div className="body">
         <PartsRail />
         <main className="sheet">

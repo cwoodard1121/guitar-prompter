@@ -1,35 +1,39 @@
 import type { Song } from '../model/types';
 import { repairSong } from '../model/song';
+import { planSync, type RemoteMeta } from './sync';
 
 /**
- * Persistence = an always-on local cache (localStorage) plus an optional remote.
- * The remote is an interface so the claude.ai artifact store can later be swapped
- * for Supabase (or anything else) without touching the editor.
+ * Persistence = an always-on local copy (localStorage) plus an optional remote.
+ * The remote is an interface so the editor never knows (or cares) where songs sync to.
  */
 export interface RemoteStore {
-  readonly name: string;
-  list(): Promise<Song[]>;
+  /** id / updatedAt / deletedAt for every song the remote knows. */
+  meta(): Promise<RemoteMeta[]>;
+  fetch(ids: string[]): Promise<Song[]>;
   put(song: Song): Promise<void>;
-  remove(id: string): Promise<void>;
+  markDeleted(id: string, at: number): Promise<void>;
 }
 
 const KEY = 'gp:songs:v1';
+const TOMBSTONES = 'gp:deleted:v1';
 
-function readLocal(): Record<string, Song> {
+function read<T>(key: string, fallback: T): T {
   try {
-    return JSON.parse(localStorage.getItem(KEY) || '{}');
+    return JSON.parse(localStorage.getItem(key) || 'null') ?? fallback;
   } catch {
-    return {};
+    return fallback;
   }
 }
-
-function writeLocal(all: Record<string, Song>) {
+function write(key: string, value: unknown) {
   try {
-    localStorage.setItem(KEY, JSON.stringify(all));
+    localStorage.setItem(key, JSON.stringify(value));
   } catch {
     /* storage blocked or full — the remote (if any) still has it */
   }
 }
+
+const readLocal = () => read<Record<string, Song>>(KEY, {});
+const readTombstones = () => read<Record<string, number>>(TOMBSTONES, {});
 
 export function loadLocalSongs(): Song[] {
   return Object.values(readLocal()).map(repairSong).sort((a, b) => b.updatedAt - a.updatedAt);
@@ -38,13 +42,17 @@ export function loadLocalSongs(): Song[] {
 export function saveLocal(song: Song) {
   const all = readLocal();
   all[song.id] = song;
-  writeLocal(all);
+  write(KEY, all);
 }
 
-export function deleteLocal(id: string) {
+/** Removes a song here and remembers the delete so the next sync sends it on. */
+export function deleteLocal(id: string, at = Date.now()) {
   const all = readLocal();
   delete all[id];
-  writeLocal(all);
+  write(KEY, all);
+  const t = readTombstones();
+  t[id] = at;
+  write(TOMBSTONES, t);
 }
 
 /* ------------------------------------------------------------- remote sync */
@@ -53,9 +61,10 @@ let remote: RemoteStore | null = null;
 const timers = new Map<string, ReturnType<typeof setTimeout>>();
 const inflight = new Map<string, Promise<void>>();
 const pending = new Map<string, Song>();
+
+export type SyncState = 'off' | 'syncing' | 'synced' | 'error';
 type Listener = (s: SyncState) => void;
-export type SyncState = 'local' | 'syncing' | 'synced' | 'error';
-let syncState: SyncState = 'local';
+let syncState: SyncState = 'off';
 const listeners = new Set<Listener>();
 const setSync = (s: SyncState) => {
   syncState = s;
@@ -63,31 +72,47 @@ const setSync = (s: SyncState) => {
 };
 export const onSync = (l: Listener) => (listeners.add(l), l(syncState), () => void listeners.delete(l));
 
-/** Connects a remote, merges both sides (newest wins) and returns the merged list. */
-export async function connectRemote(r: RemoteStore): Promise<Song[] | null> {
-  try {
-    setSync('syncing');
-    const remoteSongs = await r.list();
-    remote = r;
-    const local = readLocal();
-    const merged: Record<string, Song> = { ...local };
-    const pushUp: Song[] = [];
-    for (const s of remoteSongs) {
-      const l = local[s.id];
-      if (!l || s.updatedAt > l.updatedAt) merged[s.id] = repairSong(s);
+export function setRemote(r: RemoteStore | null) {
+  remote = r;
+  setSync(r ? 'syncing' : 'off');
+}
+
+let running: Promise<Song[] | null> | null = null;
+
+/**
+ * Two-way sync with the remote. Returns the merged library (newest first),
+ * or null when there is no remote or the sync failed (local copy untouched).
+ */
+export function syncNow(): Promise<Song[] | null> {
+  if (!remote) return Promise.resolve(null);
+  running ??= (async () => {
+    const r = remote!;
+    try {
+      setSync('syncing');
+      const plan = planSync(Object.values(readLocal()), readTombstones(), await r.meta());
+      const all = readLocal();
+      const tomb = readTombstones();
+      if (plan.pull.length) for (const s of await r.fetch(plan.pull)) all[s.id] = repairSong(s);
+      for (const d of plan.dropLocal) delete all[d.id];
+      for (const id of plan.clearTombstones) delete tomb[id];
+      for (const s of plan.push) await r.put(s);
+      for (const d of plan.pushDelete) {
+        await r.markDeleted(d.id, d.at);
+        delete tomb[d.id];
+      }
+      write(KEY, all);
+      write(TOMBSTONES, tomb);
+      setSync(pending.size ? 'syncing' : 'synced');
+      return Object.values(all).sort((a, b) => b.updatedAt - a.updatedAt);
+    } catch (e) {
+      console.warn('sync failed', e);
+      setSync('error');
+      return null;
+    } finally {
+      running = null;
     }
-    for (const l of Object.values(local)) {
-      const s = remoteSongs.find((x) => x.id === l.id);
-      if (!s || l.updatedAt > s.updatedAt) pushUp.push(l);
-    }
-    writeLocal(merged);
-    for (const s of pushUp) await r.put(s);
-    setSync('synced');
-    return Object.values(merged).sort((a, b) => b.updatedAt - a.updatedAt);
-  } catch {
-    setSync('error');
-    return null;
-  }
+  })();
+  return running;
 }
 
 /** Debounced, one-write-at-a-time-per-song remote save. */
@@ -95,10 +120,10 @@ export function queueRemoteSave(song: Song) {
   if (!remote) return;
   pending.set(song.id, song);
   clearTimeout(timers.get(song.id));
-  timers.set(song.id, setTimeout(() => flush(song.id), 1200));
+  timers.set(song.id, setTimeout(() => void flush(song.id), 1200));
 }
 
-async function flush(id: string) {
+async function flush(id: string): Promise<void> {
   if (!remote) return;
   if (inflight.has(id)) {
     await inflight.get(id);
@@ -111,18 +136,25 @@ async function flush(id: string) {
   const p = remote
     .put(song)
     .then(() => setSync(pending.size ? 'syncing' : 'synced'))
-    .catch(() => setSync('error'))
+    .catch((e) => {
+      console.warn('save failed', e);
+      setSync('error'); // the local copy is newer, so the next syncNow() pushes it
+    })
     .finally(() => inflight.delete(id));
   inflight.set(id, p);
   await p;
 }
 
-export async function remoteDelete(id: string) {
+export async function remoteDelete(id: string, at: number) {
   pending.delete(id);
   clearTimeout(timers.get(id));
+  if (!remote) return;
   try {
-    await remote?.remove(id);
+    await remote.markDeleted(id, at);
+    const t = readTombstones();
+    delete t[id];
+    write(TOMBSTONES, t);
   } catch {
-    setSync('error');
+    setSync('error'); // tombstone stays; the next sync retries it
   }
 }
