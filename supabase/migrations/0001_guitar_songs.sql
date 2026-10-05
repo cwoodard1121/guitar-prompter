@@ -2,7 +2,7 @@
 -- browser talks to Postgres through Supabase and these policies are the API.
 -- Single user today; owner_id + RLS means more users would just work.
 
-create table if not exists public.songs (
+create table if not exists public.guitar_songs (
   owner_id       uuid        not null default auth.uid() references auth.users (id) on delete cascade,
   id             text        not null,
   title          text        not null default '',
@@ -15,26 +15,26 @@ create table if not exists public.songs (
   primary key (owner_id, id)
 );
 
-create index if not exists songs_owner_updated on public.songs (owner_id, updated_at desc);
+create index if not exists guitar_songs_owner_updated on public.guitar_songs (owner_id, updated_at desc);
 
-alter table public.songs enable row level security;
+alter table public.guitar_songs enable row level security;
 
 -- Only signed-in users, only their own rows.
-revoke all on public.songs from anon;
-grant select, insert, update, delete on public.songs to authenticated;
+revoke all on public.guitar_songs from anon;
+grant select, insert, update, delete on public.guitar_songs to authenticated;
 
-drop policy if exists "songs: read own" on public.songs;
-create policy "songs: read own" on public.songs
+drop policy if exists "guitar_songs: read own" on public.guitar_songs;
+create policy "guitar_songs: read own" on public.guitar_songs
   for select to authenticated using (owner_id = (select auth.uid()));
 
-drop policy if exists "songs: insert own" on public.songs;
-create policy "songs: insert own" on public.songs
+drop policy if exists "guitar_songs: insert own" on public.guitar_songs;
+create policy "guitar_songs: insert own" on public.guitar_songs
   for insert to authenticated with check (owner_id = (select auth.uid()));
 
-drop policy if exists "songs: update own" on public.songs;
-create policy "songs: update own" on public.songs
+drop policy if exists "guitar_songs: update own" on public.guitar_songs;
+create policy "guitar_songs: update own" on public.guitar_songs
   for update to authenticated using (owner_id = (select auth.uid())) with check (owner_id = (select auth.uid()));
 
-drop policy if exists "songs: delete own" on public.songs;
-create policy "songs: delete own" on public.songs
+drop policy if exists "guitar_songs: delete own" on public.guitar_songs;
+create policy "guitar_songs: delete own" on public.guitar_songs
   for delete to authenticated using (owner_id = (select auth.uid()));

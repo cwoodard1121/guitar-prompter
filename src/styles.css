@@ -369,3 +369,4 @@ select {
 .acct input:focus { outline: none; border-color: var(--abalone); }
 .acct-actions { display: flex; gap: 6px; }
 .acct-error { margin: 0; color: var(--danger); font-size: 12px; }
+.tap-pad.is-held { background: radial-gradient(120% 120% at 30% 20%, color-mix(in srgb, var(--abalone) 30%, var(--wood-3)), var(--wood-0)); }

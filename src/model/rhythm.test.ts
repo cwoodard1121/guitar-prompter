@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { onsetsToBars, quantize, splitTicks } from './rhythm';
+import { notesToBars, onsetsToBars, quantize, quantizeTaps, splitTicks } from './rhythm';
 import { beatTicks } from './song';
 
 const BAR = 64; // 4/4
@@ -26,6 +26,29 @@ describe('rhythm tapping', () => {
     const [bar] = onsetsToBars([16, 40, 48], BAR, 1);
     expect(sig(bar)).toBe('r4 4. 8 4');
     expect(bar.beats.reduce((t, b) => t + beatTicks(b), 0)).toBe(BAR);
+  });
+
+  it('holding sets the length and the gap after release becomes a rest', () => {
+    const spt = 60 / 120 / 16; // 120 bpm: quarter = 0.5 s
+    // hold a quarter on beat 1, let go for beat 2, quick taps on beats 3 and 4
+    const notes = quantizeTaps(
+      [
+        { down: 0, up: 0.48 },
+        { down: 1.0, up: 1.05 },
+        { down: 1.5, up: null },
+      ],
+      spt,
+      4,
+    );
+    const [bar] = notesToBars(notes, BAR, 1);
+    expect(sig(bar)).toBe('4 r4 4 4');
+  });
+
+  it('quick taps still make plain eighths', () => {
+    const spt = 60 / 120 / 16;
+    const taps = Array.from({ length: 8 }, (_, i) => ({ down: i * 0.25, up: i * 0.25 + 0.06 }));
+    const [bar] = notesToBars(quantizeTaps(taps, spt, 4), BAR, 1);
+    expect(sig(bar)).toBe('8 8 8 8 8 8 8 8');
   });
 
   it('spreads taps over several bars and leaves silent bars empty', () => {

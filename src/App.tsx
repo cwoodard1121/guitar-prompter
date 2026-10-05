@@ -7,7 +7,7 @@ import { ScoreView } from './ui/ScoreView';
 import { Fretboard } from './ui/Fretboard';
 import { ChordPalette } from './ui/ChordPalette';
 import { addBarsAtEnd, barCapacity, barCount, deleteAtCursor, placeChordName, placeChordShape, placeNote, setRest, usedChords } from './model/song';
-import { carryChords, isSlot, onsetsToBars } from './model/rhythm';
+import { carryChords, isSlot, notesToBars, type TapNote } from './model/rhythm';
 import { TapPanel } from './ui/TapPanel';
 import { identifyChord } from './model/music';
 import { audition, play, type PlayHandle } from './audio/player';
@@ -112,12 +112,12 @@ export function App() {
   };
 
   /** Writes tapped onsets into the focused part as empty rhythm slots, then parks the cursor on the first one. */
-  const commitRhythm = (onsets: number[], startBar: number, bars: number) => {
+  const commitRhythm = (notes: TapNote[], startBar: number, bars: number) => {
     edit((d, c) => {
       const p = d.parts.find((x) => x.id === c.partId)!;
       const need = startBar + bars - barCount(d);
       if (need > 0) addBarsAtEnd(d, need);
-      const fresh = onsetsToBars(onsets, barCapacity(d), bars);
+      const fresh = notesToBars(notes, barCapacity(d), bars);
       fresh.forEach((b, i) => {
         carryChords(p.bars[startBar + i], b);
         p.bars[startBar + i] = b;
@@ -129,7 +129,7 @@ export function App() {
       return { ...c, bar: startBar, beat: 0 };
     });
     set({ tapOpen: false, stack: false });
-    toast(`${onsets.length} notes tapped. Now tap frets to fill them in order.`);
+    toast(`${notes.length} notes tapped. Now tap frets to fill them in order.`);
   };
 
   const togglePlay = useCallback(() => {

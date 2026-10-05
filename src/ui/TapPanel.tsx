@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from 'react';
 import { useStore, focusedPart } from '../state/store';
 import { play, type PlayHandle } from '../audio/player';
-import { quantize } from '../model/rhythm';
+import { quantizeTaps, type RawTap, type TapNote } from '../model/rhythm';
 import { barCapacity } from '../model/song';
 import { Icon } from './Icon';
 
 type Phase = 'ready' | 'countin' | 'recording';
 
 interface Props {
-  onCommit: (onsets: number[], startBar: number, bars: number) => void;
+  onCommit: (notes: TapNote[], startBar: number, bars: number) => void;
   onClose: () => void;
 }
 
@@ -35,7 +35,8 @@ export function TapPanel({ onCommit, onClose }: Props) {
   const [beatNo, setBeatNo] = useState<number | null>(null);
   const [flash, setFlash] = useState(0);
   const handle = useRef<PlayHandle | null>(null);
-  const taps = useRef<number[]>([]);
+  const taps = useRef<RawTap[]>([]);
+  const [held, setHeld] = useState(false);
   const timer = useRef<number>(0);
   const startBar = cursor.bar;
 
@@ -50,8 +51,8 @@ export function TapPanel({ onCommit, onClose }: Props) {
     if (save && h) {
       const gridTicks = GRIDS.find((g) => g.id === grid)!.ticks;
       const total = bars * barCapacity(song);
-      const onsets = quantize(taps.current, h.spt, gridTicks).filter((o) => o < total);
-      if (onsets.length) onCommit(onsets, startBar, bars);
+      const notes = quantizeTaps(taps.current, h.spt, gridTicks).filter((n) => n.onset < total);
+      if (notes.length) onCommit(notes, startBar, bars);
     }
   };
 
@@ -81,12 +82,22 @@ export function TapPanel({ onCommit, onClose }: Props) {
     timer.current = requestAnimationFrame(tick);
   };
 
-  const tap = () => {
+  /** Press = a note starts. Holding sets its length; release() ends it. */
+  const press = () => {
     const h = handle.current;
     if (!h) return;
-    taps.current.push(h.heardNow() - h.t0);
+    release(); // a press while another is held ends the previous note
+    taps.current.push({ down: h.heardNow() - h.t0, up: null });
+    setHeld(true);
     setCount((c) => c + 1);
     setFlash((f) => f + 1);
+  };
+
+  const release = () => {
+    const h = handle.current;
+    const last = taps.current[taps.current.length - 1];
+    if (h && last && last.up === null) last.up = h.heardNow() - h.t0;
+    setHeld(false);
   };
 
   // keyboard: Space / Enter / letters tap while recording; Escape cancels
@@ -100,16 +111,21 @@ export function TapPanel({ onCommit, onClose }: Props) {
         else onClose();
         return;
       }
-      if (e.repeat) return;
       if (e.key === ' ' || e.key === 'Enter' || /^[a-z]$/i.test(e.key)) {
         e.preventDefault();
-        if (handle.current) tap();
+        if (e.repeat) return; // holding a key = holding the note
+        if (handle.current) press();
         else if (e.key === ' ' || e.key === 'Enter') start();
       }
     };
+    const onKeyUp = (e: KeyboardEvent) => {
+      if (handle.current && (e.key === ' ' || e.key === 'Enter' || /^[a-z]$/i.test(e.key))) release();
+    };
     window.addEventListener('keydown', onKey, true);
+    window.addEventListener('keyup', onKeyUp, true);
     return () => {
       window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keyup', onKeyUp, true);
       set({ tapping: false });
       handle.current?.stop();
       cancelAnimationFrame(timer.current);
@@ -170,16 +186,18 @@ export function TapPanel({ onCommit, onClose }: Props) {
           <button className="btn btn-ghost" onClick={() => (handle.current ? finish(false) : onClose())}>
             {recording ? 'Cancel' : 'Done'}
           </button>
-          <span className="tap-hint">Space or any letter taps · move off the pad or Esc to finish</span>
+          <span className="tap-hint">Tap or hold (hold = longer note) · Space or any letter works too · move off the pad or Esc to finish</span>
         </div>
       </div>
       <button
-        className={'tap-pad' + (phase === 'recording' ? ' is-live' : phase === 'countin' ? ' is-count' : '')}
+        className={'tap-pad' + (phase === 'recording' ? ' is-live' : phase === 'countin' ? ' is-count' : '') + (held ? ' is-held' : '')}
         onPointerDown={(e) => {
           e.preventDefault();
-          if (handle.current) tap();
+          if (handle.current) press();
           else start();
         }}
+        onPointerUp={() => release()}
+        onPointerCancel={() => release()}
         onPointerLeave={(e) => {
           // sliding the mouse off the pad ends the take: keep what was tapped, drop a take still counting in
           // (touch fires pointerleave after every tap, so this is mouse-only)

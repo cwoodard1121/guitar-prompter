@@ -11,7 +11,7 @@ Guitar workspace for transcribing and performing songs: a visual tab + chord edi
 ## Stack
 React 19 + TypeScript + Vite, Zustand, VexFlow 4 (notation + tab), Web Audio (Karplus–Strong synth), Vitest. Static site.
 
-Songs persist to localStorage plus a pluggable `RemoteStore` (`src/storage/storage.ts`). The remote is Supabase, called straight from the browser with RLS on the `songs` table (`supabase/migrations`). There's no server. Sync is newest-wins with tombstones (`src/storage/sync.ts`, unit tested). Keys go in `.env.local` (see `.env.example`). Single user for now, but RLS on `owner_id` means more users would work without changes.
+Songs persist to localStorage plus a pluggable `RemoteStore` (`src/storage/storage.ts`). The remote is Supabase, called straight from the browser with RLS on the `guitar_songs` table (`supabase/migrations`). There's no server. Sync is newest-wins with tombstones (`src/storage/sync.ts`, unit tested). Keys go in `.env.local` (see `.env.example`). Single user for now, but RLS on `owner_id` means more users would work without changes.
 
 ## Commands
 ```bash

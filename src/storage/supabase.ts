@@ -16,7 +16,7 @@ const ms = (s: string | null) => (s ? new Date(s).getTime() : null);
  * only ever shows or changes that user's rows. No server of our own.
  */
 export function supabaseRemote(client: SupabaseClient, userId: string): RemoteStore {
-  const songs = () => client.from('songs');
+  const songs = () => client.from('guitar_songs');
   const fail = (error: { message: string } | null) => {
     if (error) throw new Error(error.message);
   };
